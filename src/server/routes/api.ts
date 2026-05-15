@@ -1,93 +1,905 @@
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
-  DecrementResponse,
-  IncrementResponse,
-  InitResponse,
+  ApiError,
+  AppSettings,
+  AuditEvent,
+  ConsensusTicket,
+  ConsensusVote,
+  CreateTicketRequest,
+  DashboardResponse,
+  ModeratorProfile,
+  QueueActionRequest,
+  QueueItem,
+  ResponseTemplate,
+  SaveTemplateRequest,
+  Severity,
+  SubmitAttemptRequest,
+  SubmitAttemptResponse,
+  TemplateStatus,
+  TicketDetailResponse,
+  TicketStatus,
+  TrainingAttempt,
+  TrainingScenario,
+  UpdateSettingsRequest,
+  VoteRequest,
 } from '../../shared/api';
-
-type ErrorResponse = {
-  status: 'error';
-  message: string;
-};
 
 export const api = new Hono();
 
-api.get('/init', async (c) => {
-  const { postId } = context;
+const NS = 'moddesk-os:v1';
+const key = (name: string) => `${NS}:${name}`;
+const now = () => new Date().toISOString();
+const id = (prefix: string) =>
+  `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-  if (!postId) {
-    console.error('API Init Error: postId not found in devvit context');
-    return c.json<ErrorResponse>(
-      {
-        status: 'error',
-        message: 'postId is required but missing from context',
-      },
-      400
-    );
-  }
+const json = {
+  async get<T>(redisKey: string): Promise<T | undefined> {
+    const raw = await redis.get(redisKey);
+    return raw ? (JSON.parse(raw) as T) : undefined;
+  },
+  async set<T>(redisKey: string, value: T): Promise<void> {
+    await redis.set(redisKey, JSON.stringify(value));
+  },
+};
 
+const ruleTitle = (ruleId: string) => {
+  const titles: Record<string, string> = {
+    'rule-1': 'Civility',
+    'rule-2': 'Stay on Topic',
+    'rule-3': 'Spam / Self-Promo',
+    'rule-4': 'Duplicate / Megathread',
+    'rule-5': 'Crisis or Safety Escalation',
+  };
+  return titles[ruleId] ?? ruleId;
+};
+
+const defaultSettings = (subredditName: string): AppSettings => ({
+  subredditName,
+  initializedAt: now(),
+  consensusThresholdMode: 'fixed_count',
+  consensusFixedCount: 3,
+  consensusPercent: 67,
+  highImpactActions: ['Permanent ban', 'Long mute', 'Thread lock', 'Sticky announcement'],
+  trainingRequiredLevel: 3,
+  themeMode: 'authentic',
+  mobileCompactMode: false,
+  anonymousVotesUntilClosed: false,
+  templateApprovalRequired: false,
+  scenarioDifficultyMix: 'balanced',
+});
+
+const profileFor = (username: string): ModeratorProfile => ({
+  username,
+  firstSeenAt: now(),
+  roleLabel: 'Trainee',
+  trainingLevel: 1,
+  xp: 0,
+  totalScenarios: 0,
+  correctScenarios: 0,
+  queueReviewed: 0,
+  consensusVotesCast: 0,
+  streak: 0,
+  lastActiveAt: now(),
+  missedConcepts: [],
+});
+
+const seedScenarios = (): TrainingScenario[] => [
+  {
+    scenarioId: 'scenario-spam-link',
+    sourceType: 'post',
+    title: 'Discount mirror site posted by a new account',
+    bodyExcerpt:
+      'New account posts a shortened URL promising free game keys. Reports mention affiliate spam and previous removals.',
+    authorNameHash: 'u/moddesk-demo-41f',
+    reportReasons: ['Spam', 'Suspicious link', 'Self-promotion'],
+    expectedAction: 'remove',
+    expectedRuleId: 'rule-3',
+    difficulty: 'easy',
+    explanation:
+      'The link pattern, new-account context, and repeated promotional wording make this a clear Rule 3 removal.',
+    tags: ['spam', 'links', 'new-account'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-borderline-insult',
+    sourceType: 'comment',
+    title: 'Heated reply with borderline insult',
+    bodyExcerpt:
+      'A user calls another commenter dishonest and clueless during a fast-moving argument, but also includes on-topic evidence.',
+    authorNameHash: 'u/moddesk-demo-8b2',
+    reportReasons: ['Harassment', 'Be civil'],
+    expectedAction: 'filter',
+    expectedRuleId: 'rule-1',
+    difficulty: 'medium',
+    explanation:
+      'Filtering or holding for senior review preserves useful context while preventing the argument from escalating.',
+    tags: ['civility', 'edge-case'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-duplicate-news',
+    sourceType: 'post',
+    title: 'Breaking news link already covered in megathread',
+    bodyExcerpt:
+      'A second submission repeats a news item that is already pinned in a megathread with active discussion.',
+    authorNameHash: 'u/moddesk-demo-2cc',
+    reportReasons: ['Duplicate', 'Megathread'],
+    expectedAction: 'remove',
+    expectedRuleId: 'rule-4',
+    difficulty: 'medium',
+    explanation:
+      'Duplicate news should be redirected to the active megathread to keep discussion consolidated.',
+    tags: ['duplicate', 'megathread'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-self-harm',
+    sourceType: 'comment',
+    title: 'Possible self-harm report in a comment chain',
+    bodyExcerpt:
+      'A user writes that they might hurt themselves tonight. Other users are arguing under the same comment.',
+    authorNameHash: 'u/moddesk-demo-f11',
+    reportReasons: ['Self-harm', 'Urgent safety'],
+    expectedAction: 'escalate',
+    expectedRuleId: 'rule-5',
+    difficulty: 'hard',
+    explanation:
+      'Urgent safety reports should be escalated and handled with care. Do not treat this as a points-earning queue clear.',
+    tags: ['safety', 'urgent'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-flamebait',
+    sourceType: 'post',
+    title: 'Ambiguous political flamebait during a sensitive news cycle',
+    bodyExcerpt:
+      'The post is technically on topic, but the title uses loaded phrasing and the first comments show brigading risk.',
+    authorNameHash: 'u/moddesk-demo-a77',
+    reportReasons: ['Flamebait', 'Possible raid', 'Off-topic'],
+    expectedAction: 'escalate',
+    expectedRuleId: 'rule-2',
+    difficulty: 'hard',
+    explanation:
+      'Ambiguous high-impact political moderation benefits from consensus before locking or removing a visible thread.',
+    tags: ['governance', 'brigading', 'high-impact'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+];
+
+const seedTickets = (username: string): ConsensusTicket[] => [
+  makeTicket('Permanent ban', 'user', 'u_spamwave', 'u/SpamWave', username, 'Repeated spam after warnings', 'high', [
+    'https://reddit.com/r/example/comments/demo1',
+    'Mod note: removed similar links three times',
+  ]),
+  makeTicket('Long mute', 'user', 'u_modmail_abuse', 'u/AngryMailbox', username, 'Abusive modmail after removal', 'medium', [
+    'modmail://thread/demo-abuse',
+  ]),
+  makeTicket(
+    'Sticky announcement',
+    'announcement',
+    'sticky-rule-clarify',
+    'Emergency rule clarification',
+    username,
+    'Visible clarification during breaking-news surge',
+    'high',
+    ['Draft announcement: Keep reports factual and avoid personal attacks']
+  ),
+  makeTicket('Thread lock', 'thread', 't3_brigade_demo', 'Brigading concern thread', username, 'Vote spike and hostile imports', 'critical', [
+    't3_brigade_demo',
+    'Reports increased from 2 to 28 in 15 minutes',
+  ]),
+];
+
+const seedTemplates = (username: string): ResponseTemplate[] => [
+  makeTemplate(
+    'Rule 1 civility removal',
+    'rule-1',
+    'neutral',
+    'Hi {username}, your {post_title} was removed under **Rule 1: Civility**.\n\nPlease focus on ideas rather than personal attacks. You can appeal by replying in {modmail_link}.',
+    username
+  ),
+  makeTemplate(
+    'Rule 3 spam/self-promo removal',
+    'rule-3',
+    'strict',
+    'Your post was removed under **Rule 3: Spam / Self-Promotion**.\n\nPromotional links must follow our community rules: {rule_link}.',
+    username
+  ),
+  makeTemplate(
+    'Duplicate / megathread redirect',
+    'rule-4',
+    'friendly',
+    'Thanks for posting. This topic is already being discussed in the active megathread, so we removed this duplicate.\n\nPlease continue here: {rule_link}.',
+    username
+  ),
+  makeTemplate(
+    'Appeal instructions',
+    'rule-1',
+    'educational',
+    'If you believe this was a mistake, contact the mod team through {modmail_link}. Include the removed item and a short explanation.',
+    username
+  ),
+  makeTemplate(
+    'Temporary lock explanation',
+    'rule-2',
+    'neutral',
+    'This thread is temporarily locked while moderators review reports. Please avoid reposting the same argument elsewhere.',
+    username
+  ),
+];
+
+const seedQueue = (): QueueItem[] => [
+  makeQueue('comment', 'Reported comment: harassment', 'You are a fraud and everyone knows it.', 'u/SharpElbow', ['Harassment'], 5400, [
+    'rule-1',
+  ]),
+  makeQueue('post', 'Reported post: spam link', 'Check out my guaranteed earning system at bit.ly/demo.', 'u/PromoPilot', ['Spam', 'Link shortener'], 2200, [
+    'rule-3',
+  ]),
+  makeQueue('post', 'Reported post: duplicate news', 'Same article submitted for the fourth time today.', 'u/NewsRunner', ['Duplicate'], 8800, [
+    'rule-4',
+  ]),
+  makeQueue('comment', 'Reported comment: possible self-harm', 'I do not think I can stay safe tonight.', 'u/ThrowawayCare', ['Self-harm', 'Urgent'], 600, [
+    'rule-5',
+  ]),
+  makeQueue('thread', 'Reported thread: brigading / raid concern', 'Comment velocity spiked after an external link was shared.', 'u/TopicStarter', [
+    'Brigading',
+    'Harassment',
+    'Rule-breaking influx',
+  ], 1200, ['rule-1', 'rule-2']),
+];
+
+function makeTicket(
+  actionType: string,
+  targetType: ConsensusTicket['targetType'],
+  targetId: string,
+  targetDisplay: string,
+  proposedBy: string,
+  reason: string,
+  severity: Severity,
+  evidence: string[]
+): ConsensusTicket {
+  return {
+    ticketId: id('ticket'),
+    actionType,
+    targetType,
+    targetId,
+    targetDisplay,
+    proposedBy,
+    reason,
+    severity,
+    evidence,
+    thresholdType: 'fixed_count',
+    requiredVotes: 3,
+    status: 'pending',
+    createdAt: now(),
+    expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    notes: 'Seeded demo case for test installs.',
+  };
+}
+
+function makeTemplate(
+  title: string,
+  linkedRuleId: string,
+  tone: ResponseTemplate['tone'],
+  markdown: string,
+  username: string
+): ResponseTemplate {
+  return {
+    templateId: id('tpl'),
+    title,
+    linkedRuleId,
+    tone,
+    markdown,
+    macrosUsed: macrosIn(markdown),
+    status: 'active',
+    createdBy: username,
+    createdAt: now(),
+    updatedBy: username,
+    updatedAt: now(),
+    version: 1,
+  };
+}
+
+function makeQueue(
+  itemType: QueueItem['itemType'],
+  title: string,
+  bodyExcerpt: string,
+  author: string,
+  reports: string[],
+  ageSeconds: number,
+  suggestedRuleIds: string[]
+): QueueItem {
+  const severityScore = scoreQueue(reports, ageSeconds, bodyExcerpt);
+  return {
+    itemId: id('queue'),
+    itemType,
+    title,
+    bodyExcerpt,
+    author,
+    reports,
+    reportCount: reports.length,
+    ageSeconds,
+    severityScore,
+    severity: severityFromScore(severityScore),
+    suggestedRuleIds,
+    status: 'new',
+  };
+}
+
+function macrosIn(markdown: string): string[] {
+  return Array.from(new Set(markdown.match(/\{[a-z_]+\}/g) ?? []));
+}
+
+function scoreQueue(reports: string[], ageSeconds: number, body: string): number {
+  const joined = `${reports.join(' ')} ${body}`.toLowerCase();
+  let score = reports.length * 18 + Math.min(24, Math.floor(ageSeconds / 1200));
+  if (/self-harm|urgent|harm|stay safe/.test(joined)) score += 55;
+  if (/brigad|raid|harass/.test(joined)) score += 30;
+  if (/spam|shortener|promo|bit\.ly/.test(joined)) score += 20;
+  return Math.min(100, score);
+}
+
+function severityFromScore(score: number): Severity {
+  if (score >= 82) return 'critical';
+  if (score >= 62) return 'high';
+  if (score >= 36) return 'medium';
+  return 'low';
+}
+
+function requiredVotes(settings: AppSettings): number {
+  if (settings.consensusThresholdMode === 'fixed_count') return settings.consensusFixedCount;
+  if (settings.consensusThresholdMode === 'two_thirds') return 4;
+  return 3;
+}
+
+function roleFor(level: number): string {
+  if (level >= 8) return 'Consensus Captain';
+  if (level >= 6) return 'Senior Operator';
+  if (level >= 4) return 'Rulekeeper';
+  if (level >= 3) return 'Queue Cadet';
+  if (level >= 2) return 'Apprentice';
+  return 'Trainee';
+}
+
+function levelFromXp(xp: number): number {
+  let level = 1;
+  while (xp >= Math.floor(100 * Math.pow(level + 1, 1.5)) && level < 12) level += 1;
+  return level;
+}
+
+async function getModContext() {
+  const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+  const subredditName = context.subredditName ?? 'testsubreddit';
+  let isModerator: boolean;
   try {
-    const [count, username] = await Promise.all([
-      redis.get('count'),
-      reddit.getCurrentUsername(),
-    ]);
-
-    return c.json<InitResponse>({
-      type: 'init',
-      postId: postId,
-      count: count ? parseInt(count) : 0,
-      username: username ?? 'anonymous',
-    });
-  } catch (error) {
-    console.error(`API Init Error for post ${postId}:`, error);
-    let errorMessage = 'Unknown error during initialization';
-    if (error instanceof Error) {
-      errorMessage = `Initialization failed: ${error.message}`;
-    }
-    return c.json<ErrorResponse>(
-      { status: 'error', message: errorMessage },
-      400
-    );
+    const mods = await reddit.getModerators({ subredditName, limit: 100 }).all();
+    isModerator = mods.some((mod) => mod.username.toLowerCase() === username.toLowerCase());
+  } catch {
+    isModerator = false;
   }
+  return {
+    username,
+    subredditName,
+    isModerator,
+    redisStatus: 'ok' as const,
+  };
+}
+
+async function requireModerator(): Promise<ReturnType<typeof getModContext> extends Promise<infer T> ? T : never> {
+  const modContext = await getModContext();
+  if (!modContext.isModerator) {
+    throw new Error('Moderator access required for ModDesk OS.');
+  }
+  return modContext;
+}
+
+async function getIndex(indexName: string): Promise<string[]> {
+  return (await json.get<string[]>(key(`index:${indexName}`))) ?? [];
+}
+
+async function setIndex(indexName: string, ids: string[]): Promise<void> {
+  await json.set(key(`index:${indexName}`), Array.from(new Set(ids)));
+}
+
+async function putIndexed<T extends object>(
+  indexName: string,
+  itemKey: string,
+  itemId: string,
+  item: T
+): Promise<void> {
+  await json.set(key(`${itemKey}:${itemId}`), item);
+  const ids = await getIndex(indexName);
+  if (!ids.includes(itemId)) await setIndex(indexName, [itemId, ...ids]);
+}
+
+async function listIndexed<T>(indexName: string, itemKey: string): Promise<T[]> {
+  const ids = await getIndex(indexName);
+  const records: Array<T | undefined> = [];
+  for (const itemId of ids) {
+    records.push(await json.get<T>(key(`${itemKey}:${itemId}`)));
+  }
+  return records.filter((record): record is T => record !== undefined);
+}
+
+async function audit(actor: string, event: Omit<AuditEvent, 'eventId' | 'actor' | 'createdAt'>): Promise<AuditEvent> {
+  const auditEvent: AuditEvent = {
+    eventId: id('audit'),
+    actor,
+    createdAt: now(),
+    ...event,
+  };
+  await putIndexed('audit', 'audit', auditEvent.eventId, auditEvent);
+  const ids = (await getIndex('audit')).slice(0, 80);
+  await setIndex('audit', ids);
+  return auditEvent;
+}
+
+async function getSettings(subredditName: string): Promise<AppSettings> {
+  const existing = await json.get<AppSettings>(key('settings'));
+  if (existing) return existing;
+  const settings = defaultSettings(subredditName);
+  await json.set(key('settings'), settings);
+  return settings;
+}
+
+async function getProfile(username: string): Promise<ModeratorProfile> {
+  const existing = await json.get<ModeratorProfile>(key(`profile:${username.toLowerCase()}`));
+  const profile = existing ?? profileFor(username);
+  profile.lastActiveAt = now();
+  await json.set(key(`profile:${username.toLowerCase()}`), profile);
+  return profile;
+}
+
+async function seedIfNeeded(username: string, subredditName: string): Promise<void> {
+  await getSettings(subredditName);
+  if ((await getIndex('scenarios')).length === 0) {
+    const scenarios = seedScenarios();
+    await Promise.all(scenarios.map((scenario) => putIndexed('scenarios', 'scenario', scenario.scenarioId, scenario)));
+  }
+  if ((await getIndex('tickets')).length === 0) {
+    const tickets = seedTickets(username);
+    await Promise.all(tickets.map((ticket) => putIndexed('tickets', 'ticket', ticket.ticketId, ticket)));
+  }
+  if ((await getIndex('templates')).length === 0) {
+    const templates = seedTemplates(username);
+    await Promise.all(templates.map((template) => putIndexed('templates', 'template', template.templateId, template)));
+  }
+  if ((await getIndex('queue')).length === 0) {
+    const items = seedQueue().sort((a, b) => b.severityScore - a.severityScore);
+    await Promise.all(items.map((item) => putIndexed('queue', 'queue', item.itemId, item)));
+  }
+}
+
+async function votesFor(ticketId: string): Promise<ConsensusVote[]> {
+  const rawVotes = await redis.hGetAll(key(`votes:${ticketId}`));
+  return Object.values(rawVotes).map((raw) => JSON.parse(raw) as ConsensusVote);
+}
+
+function tallyStatus(ticket: ConsensusTicket, votes: ConsensusVote[]): TicketStatus {
+  const approvals = votes.filter((vote) => vote.vote === 'approve').length;
+  const rejections = votes.filter((vote) => vote.vote === 'reject').length;
+  if (approvals >= ticket.requiredVotes) return 'approved';
+  if (rejections >= ticket.requiredVotes) return 'rejected';
+  if (Date.now() > new Date(ticket.expiresAt).getTime()) return 'expired';
+  return ticket.status === 'needs_info' ? 'needs_info' : 'pending';
+}
+
+function scoreAttempt(
+  scenario: TrainingScenario,
+  input: SubmitAttemptRequest
+): Pick<TrainingAttempt, 'score' | 'xpAwarded' | 'feedback'> & { correct: boolean } {
+  const correctAction = input.chosenAction === scenario.expectedAction;
+  const correctRule = input.chosenRuleId === scenario.expectedRuleId;
+  const edgeCaseEscalation = scenario.difficulty === 'hard' && input.chosenAction === 'escalate';
+  const difficultyWeight = scenario.difficulty === 'hard' ? 1.35 : scenario.difficulty === 'medium' ? 1.15 : 1;
+  const latencySeconds = Math.max(1, input.latencyMs / 1000);
+  const patienceFactor = Math.max(0.82, Math.exp(-0.003 * Math.max(0, latencySeconds - 30)));
+  const base = (correctAction ? 56 : 14) + (correctRule ? 28 : 0) + (edgeCaseEscalation ? 14 : 0);
+  const confidencePenalty = !correctAction && input.confidence > 80 ? 0.88 : 1;
+  const score = Math.round(Math.min(100, base * difficultyWeight * patienceFactor * confidencePenalty));
+  const xpAwarded = Math.max(12, Math.round(score * difficultyWeight));
+  const feedback = correctAction
+    ? `Training scenario complete. Correct action matched ${ruleTitle(scenario.expectedRuleId)}.`
+    : `Review ${ruleTitle(scenario.expectedRuleId)}. Expected ${scenario.expectedAction}; your choice was ${input.chosenAction}.`;
+  return { score, xpAwarded, feedback, correct: correctAction && correctRule };
+}
+
+api.get('/health', async (c) => {
+  const modContext = await getModContext();
+  await redis.set(key('health:last'), now());
+  return c.json({ status: 'ok', app: 'ModDesk OS', context: modContext }, 200);
 });
 
-api.post('/increment', async (c) => {
-  const { postId } = context;
-  if (!postId) {
-    return c.json<ErrorResponse>(
-      {
-        status: 'error',
-        message: 'postId is required',
-      },
-      400
-    );
+api.get('/dashboard', async (c) => {
+  const modContext = await getModContext();
+  if (!modContext.isModerator) {
+    return c.json<Pick<DashboardResponse, 'context'>>({ context: modContext }, 403);
   }
-
-  const count = await redis.incrBy('count', 1);
-  return c.json<IncrementResponse>({
-    count,
-    postId,
-    type: 'increment',
+  await seedIfNeeded(modContext.username, modContext.subredditName);
+  const [settings, profile, scenarios, tickets, templates, queue, auditEvents] = await Promise.all([
+    getSettings(modContext.subredditName),
+    getProfile(modContext.username),
+    listIndexed<TrainingScenario>('scenarios', 'scenario'),
+    listIndexed<ConsensusTicket>('tickets', 'ticket'),
+    listIndexed<ResponseTemplate>('templates', 'template'),
+    listIndexed<QueueItem>('queue', 'queue'),
+    listIndexed<AuditEvent>('audit', 'audit'),
+  ]);
+  const ticketVotes = (await Promise.all(tickets.map((ticket) => votesFor(ticket.ticketId)))).flat();
+  const summary = {
+    pendingVotes: tickets.filter((ticket) => ticket.status === 'pending' || ticket.status === 'needs_info').length,
+    trainingLevel: profile.trainingLevel,
+    queueCritical: queue.filter((item) => item.severity === 'critical' && item.status === 'new').length,
+    templatesCount: templates.filter((template) => template.status !== 'archived').length,
+    teamCoverage: Math.round(
+      (queue.filter((item) => item.status === 'cleared' || item.status === 'escalated').length / Math.max(1, queue.length)) *
+        100
+    ),
+  };
+  return c.json<DashboardResponse>({
+    context: modContext,
+    settings,
+    profile,
+    summary,
+    scenarios,
+    tickets: tickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    votes: ticketVotes,
+    templates,
+    queue: queue.sort((a, b) => b.severityScore - a.severityScore),
+    audit: auditEvents.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 40),
   });
 });
 
-api.post('/decrement', async (c) => {
-  const { postId } = context;
-  if (!postId) {
-    return c.json<ErrorResponse>(
-      {
-        status: 'error',
-        message: 'postId is required',
-      },
-      400
-    );
-  }
-
-  const count = await redis.incrBy('count', -1);
-  return c.json<DecrementResponse>({
-    count,
-    postId,
-    type: 'decrement',
+api.post('/settings', async (c) => {
+  const modContext = await requireModerator();
+  const update = await c.req.json<UpdateSettingsRequest>();
+  const before = await getSettings(modContext.subredditName);
+  const after: AppSettings = {
+    ...before,
+    ...update,
+    consensusFixedCount: Math.max(1, Math.min(12, update.consensusFixedCount ?? before.consensusFixedCount)),
+    consensusPercent: Math.max(51, Math.min(100, update.consensusPercent ?? before.consensusPercent)),
+    trainingRequiredLevel: Math.max(1, Math.min(12, update.trainingRequiredLevel ?? before.trainingRequiredLevel)),
+  };
+  await json.set(key('settings'), after);
+  await audit(modContext.username, {
+    eventType: 'settings.updated',
+    entityType: 'settings',
+    entityId: 'settings',
+    summary: 'Control Panel settings updated.',
+    before,
+    after,
   });
+  return c.json(after);
+});
+
+api.post('/reset', async (c) => {
+  const modContext = await requireModerator();
+  const knownIndexes = ['scenarios', 'tickets', 'templates', 'queue', 'audit'];
+  const itemPrefixes: Record<string, string> = {
+    scenarios: 'scenario',
+    tickets: 'ticket',
+    templates: 'template',
+    queue: 'queue',
+    audit: 'audit',
+  };
+  const ids = await Promise.all(knownIndexes.map((indexName) => getIndex(indexName)));
+  const dataKeys = ids.flatMap((indexIds, indexPosition) => {
+    const indexName = knownIndexes[indexPosition] ?? '';
+    const itemPrefix = itemPrefixes[indexName] ?? indexName;
+    return indexIds.map((itemId) => key(`${itemPrefix}:${itemId}`));
+  });
+  await redis.del(
+    key('settings'),
+    ...knownIndexes.map((indexName) => key(`index:${indexName}`)),
+    ...dataKeys
+  );
+  await seedIfNeeded(modContext.username, modContext.subredditName);
+  await audit(modContext.username, {
+    eventType: 'data.reset',
+    entityType: 'settings',
+    entityId: 'demo-data',
+    summary: 'Demo data reset for test install.',
+  });
+  return c.json({ status: 'ok' });
+});
+
+api.post('/training/attempt', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<SubmitAttemptRequest>();
+  const scenario = await json.get<TrainingScenario>(key(`scenario:${input.scenarioId}`));
+  if (!scenario) return c.json<ApiError>({ status: 'error', message: 'Scenario not found.' }, 404);
+  const result = scoreAttempt(scenario, input);
+  const attempt: TrainingAttempt = {
+    attemptId: id('attempt'),
+    scenarioId: scenario.scenarioId,
+    username: modContext.username,
+    chosenAction: input.chosenAction,
+    chosenRuleId: input.chosenRuleId,
+    confidence: input.confidence,
+    latencyMs: input.latencyMs,
+    score: result.score,
+    xpAwarded: result.xpAwarded,
+    feedback: `${result.feedback} ${scenario.explanation}`,
+    createdAt: now(),
+  };
+  await putIndexed(`attempts:${modContext.username.toLowerCase()}`, 'attempt', attempt.attemptId, attempt);
+  const profile = await getProfile(modContext.username);
+  const nextXp = profile.xp + result.xpAwarded;
+  const level = levelFromXp(nextXp);
+  const missedConcepts = result.correct
+    ? profile.missedConcepts
+    : Array.from(new Set([ruleTitle(scenario.expectedRuleId), ...profile.missedConcepts])).slice(0, 5);
+  const after: ModeratorProfile = {
+    ...profile,
+    xp: nextXp,
+    trainingLevel: level,
+    roleLabel: roleFor(level),
+    totalScenarios: profile.totalScenarios + 1,
+    correctScenarios: profile.correctScenarios + (result.correct ? 1 : 0),
+    streak: result.correct ? profile.streak + 1 : 0,
+    missedConcepts,
+    lastActiveAt: now(),
+  };
+  await json.set(key(`profile:${modContext.username.toLowerCase()}`), after);
+  await audit(modContext.username, {
+    eventType: 'training.attempt',
+    entityType: 'training_scenario',
+    entityId: scenario.scenarioId,
+    summary: `Training scenario complete: ${result.score}/100.`,
+    after: attempt,
+  });
+  return c.json<SubmitAttemptResponse>({ attempt, profile: after, scenario });
+});
+
+api.post('/consensus/tickets', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<CreateTicketRequest>();
+  const settings = await getSettings(modContext.subredditName);
+  const ticket: ConsensusTicket = {
+    ticketId: id('ticket'),
+    actionType: input.actionType,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    targetDisplay: input.targetDisplay,
+    proposedBy: modContext.username,
+    reason: input.reason,
+    severity: input.severity,
+    evidence: input.evidence,
+    thresholdType: settings.consensusThresholdMode,
+    requiredVotes: requiredVotes(settings),
+    status: 'pending',
+    createdAt: now(),
+    expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    notes: input.notes,
+  };
+  await putIndexed('tickets', 'ticket', ticket.ticketId, ticket);
+  await audit(modContext.username, {
+    eventType: 'ticket.created',
+    entityType: 'consensus_ticket',
+    entityId: ticket.ticketId,
+    summary: `Consensus gate active for ${ticket.actionType} on ${ticket.targetDisplay}.`,
+    after: ticket,
+  });
+  return c.json(ticket);
+});
+
+api.get('/consensus/tickets/:ticketId', async (c) => {
+  await requireModerator();
+  const ticketId = c.req.param('ticketId');
+  const ticket = await json.get<ConsensusTicket>(key(`ticket:${ticketId}`));
+  if (!ticket) return c.json<ApiError>({ status: 'error', message: 'Ticket not found.' }, 404);
+  return c.json<TicketDetailResponse>({ ticket, votes: await votesFor(ticketId) });
+});
+
+api.post('/consensus/vote', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<VoteRequest>();
+  const ticket = await json.get<ConsensusTicket>(key(`ticket:${input.ticketId}`));
+  if (!ticket) return c.json<ApiError>({ status: 'error', message: 'Ticket not found.' }, 404);
+  if (['approved', 'rejected', 'executed', 'expired'].includes(ticket.status)) {
+    return c.json<ApiError>({ status: 'error', message: 'Closed tickets cannot receive new votes.' }, 400);
+  }
+  const voteKey = key(`votes:${ticket.ticketId}`);
+  const existingRaw = await redis.hGet(voteKey, modContext.username.toLowerCase());
+  const vote: ConsensusVote = {
+    ticketId: ticket.ticketId,
+    username: modContext.username,
+    vote: input.vote,
+    note: input.note,
+    createdAt: existingRaw ? (JSON.parse(existingRaw) as ConsensusVote).createdAt : now(),
+    updatedAt: now(),
+  };
+  await redis.hSet(voteKey, { [modContext.username.toLowerCase()]: JSON.stringify(vote) });
+  const votes = await votesFor(ticket.ticketId);
+  const status = tallyStatus(ticket, votes);
+  const updatedTicket: ConsensusTicket = {
+    ...ticket,
+    status,
+    finalizedAt: status === 'approved' || status === 'rejected' || status === 'expired' ? now() : ticket.finalizedAt,
+    finalOutcome:
+      status === 'approved'
+        ? 'Approved. Manual execution confirmation required.'
+        : status === 'rejected'
+          ? 'Rejected by consensus vote.'
+          : ticket.finalOutcome,
+  };
+  await putIndexed('tickets', 'ticket', ticket.ticketId, updatedTicket);
+  const profile = await getProfile(modContext.username);
+  await json.set(key(`profile:${modContext.username.toLowerCase()}`), {
+    ...profile,
+    consensusVotesCast: profile.consensusVotesCast + (existingRaw ? 0 : 1),
+    lastActiveAt: now(),
+  });
+  await audit(modContext.username, {
+    eventType: existingRaw ? 'vote.updated' : 'vote.recorded',
+    entityType: 'consensus_ticket',
+    entityId: ticket.ticketId,
+    summary: `Vote recorded. Awaiting ${Math.max(0, ticket.requiredVotes - votes.filter((item) => item.vote === 'approve').length)} more operators.`,
+    before: ticket,
+    after: updatedTicket,
+  });
+  return c.json<TicketDetailResponse>({ ticket: updatedTicket, votes });
+});
+
+api.post('/consensus/executed', async (c) => {
+  const modContext = await requireModerator();
+  const input = (await c.req.json<{ ticketId: string; outcome: string }>()) as { ticketId: string; outcome: string };
+  const ticket = await json.get<ConsensusTicket>(key(`ticket:${input.ticketId}`));
+  if (!ticket) return c.json<ApiError>({ status: 'error', message: 'Ticket not found.' }, 404);
+  if (ticket.status !== 'approved') {
+    return c.json<ApiError>({ status: 'error', message: 'Only approved tickets can be marked executed.' }, 400);
+  }
+  const updatedTicket: ConsensusTicket = {
+    ...ticket,
+    status: 'executed',
+    executedAt: now(),
+    finalOutcome: input.outcome || 'Manual execution confirmed.',
+  };
+  await putIndexed('tickets', 'ticket', ticket.ticketId, updatedTicket);
+  await audit(modContext.username, {
+    eventType: 'ticket.executed',
+    entityType: 'consensus_ticket',
+    entityId: ticket.ticketId,
+    summary: 'Approved ticket marked as manually executed.',
+    before: ticket,
+    after: updatedTicket,
+  });
+  return c.json(updatedTicket);
+});
+
+api.post('/templates', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<SaveTemplateRequest>();
+  const existing = input.templateId ? await json.get<ResponseTemplate>(key(`template:${input.templateId}`)) : undefined;
+  const template: ResponseTemplate = {
+    templateId: existing?.templateId ?? id('tpl'),
+    title: input.title,
+    linkedRuleId: input.linkedRuleId,
+    tone: input.tone,
+    markdown: input.markdown,
+    macrosUsed: macrosIn(input.markdown),
+    status: input.status,
+    createdBy: existing?.createdBy ?? modContext.username,
+    createdAt: existing?.createdAt ?? now(),
+    updatedBy: modContext.username,
+    updatedAt: now(),
+    version: (existing?.version ?? 0) + 1,
+  };
+  await putIndexed('templates', 'template', template.templateId, template);
+  await audit(modContext.username, {
+    eventType: existing ? 'template.updated' : 'template.created',
+    entityType: 'response_template',
+    entityId: template.templateId,
+    summary: `Template saved to Response Disk: ${template.title}.`,
+    before: existing,
+    after: template,
+  });
+  return c.json(template);
+});
+
+api.post('/templates/:templateId/archive', async (c) => {
+  const modContext = await requireModerator();
+  const templateId = c.req.param('templateId');
+  const existing = await json.get<ResponseTemplate>(key(`template:${templateId}`));
+  if (!existing) return c.json<ApiError>({ status: 'error', message: 'Template not found.' }, 404);
+  const archived: ResponseTemplate = {
+    ...existing,
+    status: 'archived' satisfies TemplateStatus,
+    updatedAt: now(),
+    updatedBy: modContext.username,
+    version: existing.version + 1,
+  };
+  await putIndexed('templates', 'template', archived.templateId, archived);
+  await audit(modContext.username, {
+    eventType: 'template.archived',
+    entityType: 'response_template',
+    entityId: archived.templateId,
+    summary: `Template archived: ${archived.title}.`,
+    before: existing,
+    after: archived,
+  });
+  return c.json(archived);
+});
+
+api.post('/queue/action', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<QueueActionRequest>();
+  const item = await json.get<QueueItem>(key(`queue:${input.itemId}`));
+  if (!item) return c.json<ApiError>({ status: 'error', message: 'Queue item not found.' }, 404);
+  if (input.action === 'escalate') {
+    const ticketInput: CreateTicketRequest = {
+      actionType: 'Queue escalation',
+      targetType: item.itemType === 'thread' ? 'thread' : item.itemType,
+      targetId: item.itemId,
+      targetDisplay: item.title,
+      reason: `Queue packet escalated: ${item.reports.join(', ')}`,
+      severity: item.severity,
+      evidence: [item.bodyExcerpt, ...item.reports],
+      notes: input.note,
+    };
+    const settings = await getSettings(modContext.subredditName);
+    const ticket: ConsensusTicket = {
+      ticketId: id('ticket'),
+      actionType: ticketInput.actionType,
+      targetType: ticketInput.targetType,
+      targetId: ticketInput.targetId,
+      targetDisplay: ticketInput.targetDisplay,
+      proposedBy: modContext.username,
+      reason: ticketInput.reason,
+      severity: ticketInput.severity,
+      evidence: ticketInput.evidence,
+      thresholdType: settings.consensusThresholdMode,
+      requiredVotes: requiredVotes(settings),
+      status: 'pending',
+      createdAt: now(),
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+      notes: ticketInput.notes,
+    };
+    await putIndexed('tickets', 'ticket', ticket.ticketId, ticket);
+  }
+  const updated: QueueItem = {
+    ...item,
+    status:
+      input.action === 'escalate'
+        ? 'consensus_required'
+        : input.action === 'snooze'
+          ? 'snoozed'
+          : 'cleared',
+    reviewedBy: modContext.username,
+    reviewedAt: now(),
+    outcome: input.action,
+    note: input.note,
+  };
+  await putIndexed('queue', 'queue', updated.itemId, updated);
+  const profile = await getProfile(modContext.username);
+  await json.set(key(`profile:${modContext.username.toLowerCase()}`), {
+    ...profile,
+    queueReviewed: profile.queueReviewed + 1,
+    xp: profile.xp + 8,
+    lastActiveAt: now(),
+  });
+  await audit(modContext.username, {
+    eventType: input.action === 'escalate' ? 'queue.escalated' : 'queue.reviewed',
+    entityType: 'queue_item',
+    entityId: item.itemId,
+    summary:
+      input.action === 'escalate'
+        ? 'Queue packet escalated to Governance Desk.'
+        : `Queue item marked ${input.action}.`,
+    before: item,
+    after: updated,
+  });
+  return c.json(updated);
 });
