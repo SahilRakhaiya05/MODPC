@@ -357,6 +357,77 @@ function severityFromScore(score: number): Severity {
   return 'low';
 }
 
+type RedditQueueThing = {
+  id: string;
+  authorName: string;
+  createdAt: Date;
+  permalink: string;
+  userReportReasons: string[];
+  modReportReasons: string[];
+} & (
+  | {
+      title: string;
+      body?: string;
+      numberOfReports: number;
+    }
+  | {
+      body: string;
+      numReports: number;
+      postId: string;
+    }
+);
+
+function rulesFromText(text: string): string[] {
+  const lower = text.toLowerCase();
+  const rules = new Set<string>();
+  if (/harass|insult|abuse|civil|threat/.test(lower)) rules.add('rule-1');
+  if (/off[ -]?topic|politic|flame|brigad|raid/.test(lower)) rules.add('rule-2');
+  if (/spam|promo|affiliate|crypto|bit\.ly|shortener/.test(lower)) rules.add('rule-3');
+  if (/duplicate|repost|megathread/.test(lower)) rules.add('rule-4');
+  if (/self-harm|suicide|harm|safety|urgent/.test(lower)) rules.add('rule-5');
+  return Array.from(rules);
+}
+
+async function fetchLiveQueue(subredditName: string): Promise<QueueItem[]> {
+  try {
+    const subreddit = await reddit.getSubredditByName(subredditName);
+    const [reported, modQueue] = await Promise.all([
+      subreddit.getReports({ type: 'all', limit: 8 }).all(),
+      subreddit.getModQueue({ type: 'all', limit: 8 }).all(),
+    ]);
+    const byId = new Map<string, RedditQueueThing>();
+    for (const item of [...reported, ...modQueue] as RedditQueueThing[]) {
+      byId.set(item.id, item);
+    }
+    return Array.from(byId.values()).map((item) => {
+      const isPost = 'title' in item;
+      const reports = [...item.userReportReasons, ...item.modReportReasons];
+      const normalizedReports = reports.length ? reports : ['Live modqueue'];
+      const title = isPost ? item.title : `Reported comment on ${item.postId}`;
+      const body = isPost ? item.body ?? item.title : item.body;
+      const ageSeconds = Math.max(0, Math.floor((Date.now() - item.createdAt.getTime()) / 1000));
+      const severityScore = scoreQueue(normalizedReports, ageSeconds, body);
+      return {
+        itemId: `live:${item.id}`,
+        itemType: isPost ? 'post' : 'comment',
+        title,
+        bodyExcerpt: body.slice(0, 500),
+        author: item.authorName,
+        reports: normalizedReports,
+        reportCount: isPost ? item.numberOfReports : item.numReports,
+        ageSeconds,
+        severityScore,
+        severity: severityFromScore(severityScore),
+        suggestedRuleIds: rulesFromText(`${title} ${body} ${normalizedReports.join(' ')}`),
+        status: 'new',
+      } satisfies QueueItem;
+    });
+  } catch (error) {
+    console.warn('Live queue ingestion unavailable; using Redis demo queue.', error);
+    return [];
+  }
+}
+
 function requiredVotes(settings: AppSettings): number {
   if (settings.consensusThresholdMode === 'fixed_count') return settings.consensusFixedCount;
   if (settings.consensusThresholdMode === 'two_thirds') return 4;
@@ -536,14 +607,25 @@ api.get('/dashboard', async (c) => {
     listIndexed<QueueItem>('queue', 'queue'),
     listIndexed<AuditEvent>('audit', 'audit'),
   ]);
+  const liveQueue = await fetchLiveQueue(modContext.subredditName);
+  for (const liveItem of liveQueue) {
+    const existing = await json.get<QueueItem>(key(`queue:${liveItem.itemId}`));
+    if (!existing || existing.status === 'new' || existing.status === 'reviewing') {
+      await putIndexed('queue', 'queue', liveItem.itemId, liveItem);
+    }
+  }
+  const combinedQueue = [
+    ...liveQueue,
+    ...queue.filter((item) => !liveQueue.some((liveItem) => liveItem.itemId === item.itemId)),
+  ];
   const ticketVotes = (await Promise.all(tickets.map((ticket) => votesFor(ticket.ticketId)))).flat();
   const summary = {
     pendingVotes: tickets.filter((ticket) => ticket.status === 'pending' || ticket.status === 'needs_info').length,
     trainingLevel: profile.trainingLevel,
-    queueCritical: queue.filter((item) => item.severity === 'critical' && item.status === 'new').length,
+    queueCritical: combinedQueue.filter((item) => item.severity === 'critical' && item.status === 'new').length,
     templatesCount: templates.filter((template) => template.status !== 'archived').length,
     teamCoverage: Math.round(
-      (queue.filter((item) => item.status === 'cleared' || item.status === 'escalated').length / Math.max(1, queue.length)) *
+      (combinedQueue.filter((item) => item.status === 'cleared' || item.status === 'escalated').length / Math.max(1, combinedQueue.length)) *
         100
     ),
   };
@@ -556,7 +638,7 @@ api.get('/dashboard', async (c) => {
     tickets: tickets.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     votes: ticketVotes,
     templates,
-    queue: queue.sort((a, b) => b.severityScore - a.severityScore),
+    queue: combinedQueue.sort((a, b) => b.severityScore - a.severityScore),
     audit: auditEvents.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 40),
   });
 });
