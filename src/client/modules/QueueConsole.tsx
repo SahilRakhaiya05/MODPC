@@ -7,15 +7,17 @@ import { SeverityBadge } from '../components/SeverityBadge';
 interface QueueConsoleProps {
   profile: ModeratorProfile;
   onProfileUpdate: (p: ModeratorProfile) => void;
-  triggerToast: (msg: string, type?: 'success' | 'warning' | 'error') => void;
+  triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
+  mode: 'demo' | 'live';
 }
 
-export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUpdate, triggerToast }) => {
+export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUpdate, triggerToast, mode }) => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [escalateNote, setEscalateNote] = useState('');
   const [isEscalating, setIsEscalating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [liveRules, setLiveRules] = useState<any[]>([]);
 
   const fetchQueue = async () => {
     setIsLoading(true);
@@ -34,9 +36,19 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
     }
   };
 
+  const fetchLiveRules = async () => {
+    try {
+      const res = await api.getLiveRules();
+      setLiveRules(res.rules);
+    } catch (err) {
+      console.warn('Could not load live rules dynamically', err);
+    }
+  };
+
   useEffect(() => {
     void fetchQueue();
-  }, []);
+    void fetchLiveRules();
+  }, [mode]);
 
   const handleAction = async (actionType: 'approve' | 'remove' | 'escalate') => {
     if (!selectedItem) return;
@@ -55,25 +67,41 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       });
 
       if (res.success) {
-        triggerToast(
-          actionType === 'escalate' 
-            ? '🗳️ Item escalated to Consensus Board!' 
-            : `✅ Content successfully marked as [${actionType.toUpperCase()}]`,
-          'success'
-        );
+        if (mode === 'live') {
+          triggerToast(
+            actionType === 'escalate' 
+              ? '🗳️ Live item escalated to Consensus Board!' 
+              : `✅ Live content successfully actioned as [${actionType.toUpperCase()}] on Reddit!`,
+            'success'
+          );
+        } else {
+          triggerToast(
+            actionType === 'escalate' 
+              ? '🗳️ Item escalated to Consensus Board!' 
+              : `✅ Content successfully marked as [${actionType.toUpperCase()}]`,
+            'success'
+          );
+        }
+        
         onProfileUpdate(res.moderatorProfile);
         setSelectedItem(null);
         setIsEscalating(false);
         setEscalateNote('');
         void fetchQueue();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      triggerToast('Error resolving queue item', 'error');
+      triggerToast(err.message || 'Error resolving queue item', 'error');
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Filter queue items depending on 'demo' vs 'live' mode
+  const filteredQueue = queue.filter(item => {
+    const isLiveItem = item.itemId.startsWith('live:');
+    return mode === 'live' ? isLiveItem : !isLiveItem;
+  });
 
   return (
     <div style={{ display: 'flex', gap: '16px', height: '100%', minHeight: 0, fontFamily: 'var(--font-body)' }}>
@@ -93,36 +121,36 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       >
         <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: '11px', fontWeight: 700, color: 'var(--glass-text-muted)', letterSpacing: '0.05em' }}>
-            PRIORITY QUEUE
+            {mode === 'live' ? 'LIVE SUBREDDIT FEED' : 'PRIORITY QUEUE'}
           </span>
           <span 
             style={{ 
               padding: '3px 8px', 
               fontSize: '10px', 
-              color: '#10b981', 
+              color: mode === 'live' ? '#10b981' : '#f59e0b', 
               fontWeight: 700, 
-              backgroundColor: 'rgba(16, 185, 129, 0.12)', 
-              border: '1px solid rgba(16, 185, 129, 0.25)', 
+              backgroundColor: mode === 'live' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+              border: mode === 'live' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)', 
               borderRadius: '20px',
               fontFamily: 'var(--font-mono)'
             }}
           >
-            {queue.length} LEFT
+            {filteredQueue.length} LEFT
           </span>
         </div>
 
         <div style={{ flexGrow: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {isLoading && queue.length === 0 ? (
+          {isLoading && filteredQueue.length === 0 ? (
             <div style={{ fontSize: '12px', color: 'var(--glass-text-muted)', textAlign: 'center', padding: '24px 0' }}>
               🔄 TRIAGING LIVE STREAM...
             </div>
-          ) : queue.length === 0 ? (
+          ) : filteredQueue.length === 0 ? (
             <div style={{ fontSize: '12px', color: 'var(--glass-text-muted)', textAlign: 'center', padding: '32px 12px', fontFamily: 'var(--font-heading)', lineHeight: '1.6' }}>
               ☀️ THE DESK IS SILENT.<br/>
-              <span style={{ fontSize: '10px', color: '#10b981' }}>QUEUE IS FULLY TRIAGED</span>
+              <span style={{ fontSize: '10px', color: '#10b981' }}>NO ITEMS AWAITING ACTION</span>
             </div>
           ) : (
-            queue.map(item => {
+            filteredQueue.map(item => {
               const isSelected = selectedItem?.itemId === item.itemId;
               return (
                 <div
@@ -210,6 +238,27 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       >
         {selectedItem ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', height: '100%' }}>
+            
+            {/* Live Mode Security Warning Banner */}
+            {mode === 'live' && (
+              <div 
+                style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '11px',
+                  color: '#f87171',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span>⚠️</span> ACTIVE DEPLOYMENT: ACTIONS AFFECT THE LIVE SUBREDDIT DIRECTLY
+              </div>
+            )}
+
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
               <div>
@@ -220,13 +269,13 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                     letterSpacing: '0.1em',
                     fontFamily: 'var(--font-mono)', 
                     padding: '3px 8px', 
-                    backgroundColor: 'rgba(239, 68, 68, 0.12)', 
-                    color: '#f87171',
+                    backgroundColor: mode === 'live' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)', 
+                    color: mode === 'live' ? '#34d399' : '#f87171',
                     borderRadius: '4px',
-                    border: '1px solid rgba(239, 68, 68, 0.2)'
+                    border: mode === 'live' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
                   }}
                 >
-                  REPORTED QUEUE BLOCK #{selectedItem.itemId}
+                  {mode === 'live' ? 'LIVE SUBREDDIT ITEM' : 'REPORTED QUEUE BLOCK'} #{selectedItem.itemId}
                 </span>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, marginTop: '8px', fontFamily: 'var(--font-heading)', color: '#fff' }}>
                   {selectedItem.title || `Contribution post by ${selectedItem.author}`}
@@ -293,10 +342,9 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                 <span className="glass-label">⚡ SYSTEM SUGGESTED POLICIES</span>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {selectedItem.suggestedRuleIds.map(rule => {
-                    const parts = rule.split('_');
-                    const secondPart = parts[1];
-                    const ruleLabel = secondPart 
-                      ? secondPart.toUpperCase() 
+                    const matchedRule = liveRules.find(r => r.id === rule || r.shortName === rule);
+                    const ruleLabel = matchedRule 
+                      ? matchedRule.shortName.toUpperCase() 
                       : rule.replace('rule-', 'RULE ').toUpperCase();
                     return (
                       <span 
@@ -394,18 +442,25 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
               </div>
             )}
 
-            {/* Team coverage strip */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--glass-text-muted)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
-              <span>Your Review Count: <strong style={{ color: '#fff' }}>{profile.queueReviewed}</strong></span>
-              <span style={{ color: '#10b981', fontWeight: 600 }}>+15 XP per cleared ticket</span>
-            </div>
+            {/* Team coverage strip (Only show in Demo Mode) */}
+            {mode === 'demo' ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--glass-text-muted)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
+                <span>Your Review Count: <strong style={{ color: '#fff' }}>{profile.queueReviewed}</strong></span>
+                <span style={{ color: '#10b981', fontWeight: 600 }}>+15 XP per cleared ticket</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#f87171', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
+                <span>OPERATING MODE: LIVE DEPLOYMENT</span>
+                <span>TRAINING STATS & XP CALCULATIONS ARE PAUSED</span>
+              </div>
+            )}
 
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '12px' }}>
             <span style={{ fontSize: '42px', filter: 'drop-shadow(0 0 15px var(--accent-border-pill))' }}>🗃️</span>
             <span style={{ fontSize: '13px', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-heading)', textAlign: 'center', lineHeight: '1.5' }}>
-              PRIORITIZATION GRID COMPLIANT.<br/>
+              {mode === 'live' ? 'LIVE DEPLOYMENT WORKSPACE ACTIVE.' : 'PRIORITIZATION GRID COMPLIANT.'}<br/>
               <span style={{ fontSize: '11px' }}>SELECT AN ITEM FROM THE LEFT CONSOLE TO START RESOLVING.</span>
             </span>
           </div>

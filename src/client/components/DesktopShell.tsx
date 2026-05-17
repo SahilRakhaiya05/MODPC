@@ -11,9 +11,14 @@ import { ConsensusDesk } from '../modules/ConsensusDesk';
 import { Typewriter } from '../modules/Typewriter';
 import { QueueConsole } from '../modules/QueueConsole';
 import { SettingsPanel } from '../modules/SettingsPanel';
+import { AutomodPanel } from '../modules/AutomodPanel';
+import { ModLogConsole } from '../modules/ModLogConsole';
+import { UserControlRegistry } from '../modules/UserControlRegistry';
 
 interface WindowInfo {
   isOpen: boolean;
+  isMinimized: boolean;
+  isMaximized: boolean;
   title: string;
   icon: string;
   width: string;
@@ -27,6 +32,9 @@ interface WindowState {
   typewriter: WindowInfo;
   queue: WindowInfo;
   settings: WindowInfo;
+  automod: WindowInfo;
+  modlog: WindowInfo;
+  usergrid: WindowInfo;
 }
 
 interface DesktopShellProps {
@@ -41,6 +49,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
   const [auditTicker, setAuditTicker] = useState<AuditEvent[]>([]);
   
+  // OS Mode Switcher State: 'demo' (Playground Training) vs 'live' (Production Feed)
+  const [mode, setMode] = useState<'demo' | 'live'>('demo');
+
   // Custom Premium Theme State
   const [theme, setTheme] = useState<string>(() => {
     return localStorage.getItem('moddesk-theme') || 'carbon';
@@ -50,6 +61,19 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('moddesk-theme', theme);
   }, [theme]);
+
+  // Handle dynamic styling changes for Live Feed (accent shifting)
+  useEffect(() => {
+    if (mode === 'live') {
+      document.documentElement.style.setProperty('--accent-gold', '#10b981');
+      document.documentElement.style.setProperty('--accent-bg-pill', 'rgba(16, 185, 129, 0.08)');
+      document.documentElement.style.setProperty('--accent-border-pill', 'rgba(16, 185, 129, 0.25)');
+    } else {
+      document.documentElement.style.removeProperty('--accent-gold');
+      document.documentElement.style.removeProperty('--accent-bg-pill');
+      document.documentElement.style.removeProperty('--accent-border-pill');
+    }
+  }, [mode, theme]);
   
   // Real dynamic clock telemetry
   const [timeStr, setTimeStr] = useState('');
@@ -71,13 +95,16 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
   const [activeUsers, setActiveUsers] = useState(142);
   const [apiLatency, setApiLatency] = useState(48);
 
-  // Window Management States
+  // Window Management States (fully supporting open, minimized, and maximized transitions)
   const [windows, setWindows] = useState<WindowState>({
-    academy: { isOpen: false, title: 'ModAcademy Shift Training', icon: '🎓', width: '750px', height: '540px', position: { x: 80, y: 50 } },
-    consensus: { isOpen: false, title: 'Consensus Decision Desk', icon: '⚖️', width: '750px', height: '540px', position: { x: 130, y: 80 } },
-    typewriter: { isOpen: false, title: 'Typewriter Template Editor', icon: '⌨️', width: '750px', height: '540px', position: { x: 170, y: 110 } },
-    queue: { isOpen: false, title: 'Live Priority Queue Console', icon: '🗃️', width: '750px', height: '540px', position: { x: 210, y: 140 } },
-    settings: { isOpen: false, title: 'ModDesk Settings & Control Panel', icon: '⚙️', width: '600px', height: '480px', position: { x: 250, y: 170 } }
+    academy: { isOpen: false, isMinimized: false, isMaximized: false, title: 'ModAcademy Shift Training', icon: '🎓', width: '750px', height: '540px', position: { x: 80, y: 50 } },
+    consensus: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Consensus Decision Desk', icon: '⚖️', width: '750px', height: '540px', position: { x: 130, y: 80 } },
+    typewriter: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Typewriter Template Editor', icon: '⌨️', width: '750px', height: '540px', position: { x: 170, y: 110 } },
+    queue: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Live Priority Queue Console', icon: '🗃️', width: '750px', height: '540px', position: { x: 210, y: 140 } },
+    settings: { isOpen: false, isMinimized: false, isMaximized: false, title: 'ModDesk Settings & Control Panel', icon: '⚙️', width: '600px', height: '480px', position: { x: 250, y: 170 } },
+    automod: { isOpen: false, isMinimized: false, isMaximized: false, title: 'AutoModerator Rules Syntax Controller', icon: '🛡️', width: '800px', height: '580px', position: { x: 90, y: 70 } },
+    modlog: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Live Moderation Audit Stream', icon: '🖥️', width: '800px', height: '540px', position: { x: 110, y: 90 } },
+    usergrid: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Subreddit User Management Desk', icon: '👥', width: '850px', height: '580px', position: { x: 140, y: 100 } }
   });
 
   const [activeWindow, setActiveWindow] = useState<string>('');
@@ -142,7 +169,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
   const openWindow = (id: keyof WindowState) => {
     setWindows(prev => ({
       ...prev,
-      [id]: { ...prev[id], isOpen: true }
+      [id]: { ...prev[id], isOpen: true, isMinimized: false }
     }));
     setActiveWindow(id);
   };
@@ -150,11 +177,58 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
   const closeWindow = (id: keyof WindowState) => {
     setWindows(prev => ({
       ...prev,
-      [id]: { ...prev[id], isOpen: false }
+      [id]: { ...prev[id], isOpen: false, isMaximized: false, isMinimized: false }
     }));
     if (activeWindow === id) {
       setActiveWindow('');
     }
+  };
+
+  const minimizeWindow = (id: keyof WindowState) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], isMinimized: true }
+    }));
+    if (activeWindow === id) {
+      setActiveWindow('');
+    }
+  };
+
+  const toggleMinimize = (id: keyof WindowState) => {
+    setWindows(prev => {
+      const win = prev[id];
+      if (!win.isOpen) {
+        return {
+          ...prev,
+          [id]: { ...prev[id], isOpen: true, isMinimized: false }
+        };
+      }
+      if (win.isMinimized) {
+        return {
+          ...prev,
+          [id]: { ...prev[id], isMinimized: false }
+        };
+      }
+      return {
+        ...prev,
+        [id]: { ...prev[id], isMinimized: true }
+      };
+    });
+    
+    // Focus restored window
+    setWindows(current => {
+      if (!current[id].isMinimized) {
+        setActiveWindow(id);
+      }
+      return current;
+    });
+  };
+
+  const maximizeWindow = (id: keyof WindowState) => {
+    setWindows(prev => ({
+      ...prev,
+      [id]: { ...prev[id], isMaximized: !prev[id].isMaximized }
+    }));
   };
 
   const focusWindow = (id: string) => {
@@ -208,11 +282,27 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
         setSelectedIcon('');
       }}
     >
-      {/* 1. Animated mesh gradient wall art backdrop */}
-      <div className="mesh-gradient-bg">
+      {/* 1. Animated mesh gradient wall art backdrop with dynamic safety grid override in Live Mode */}
+      <div className={`mesh-gradient-bg ${mode === 'live' ? 'live-security-grid' : ''}`}>
         <div className="mesh-circle mesh-circle-1" />
         <div className="mesh-circle mesh-circle-2" />
         <div className="mesh-circle mesh-circle-3" />
+        {mode === 'live' && (
+          <div 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundImage: 'radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              pointerEvents: 'none',
+              zIndex: 1,
+              animation: 'pulse 4s infinite ease-in-out'
+            }}
+          />
+        )}
       </div>
 
       {/* 2. Top Glass Bar Menu (Sleek macOS-inspired navigation bar) */}
@@ -236,8 +326,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
             ⚙️ MODDESK OS
           </span>
           <span style={{
-            background: 'rgba(217, 119, 6, 0.08)',
-            border: '1px solid rgba(217, 119, 6, 0.25)',
+            background: mode === 'live' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(217, 119, 6, 0.08)',
+            border: mode === 'live' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(217, 119, 6, 0.25)',
             borderRadius: '20px',
             padding: '3px 12px',
             fontSize: '9px',
@@ -249,8 +339,66 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
             NODE // {settings.subredditName.replace(' (Standalone)', '').toUpperCase()}
           </span>
         </div>
+
+        {/* Center Section: Gorgeous Pill Mode Switcher */}
+        <div 
+          style={{
+            display: 'flex',
+            background: 'rgba(0, 0, 0, 0.4)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '24px',
+            padding: '3px',
+            gap: '4px',
+            zIndex: 1000
+          }}
+        >
+          <button
+            onClick={() => {
+              setMode('demo');
+              triggerToast(' Switched to [DEMO PLAYGROUND] mode.', 'info');
+            }}
+            style={{
+              background: mode === 'demo' ? 'linear-gradient(135deg, #d97706 0%, #b45309 100%)' : 'transparent',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '4px 14px',
+              fontSize: '9px',
+              fontWeight: 700,
+              fontFamily: 'var(--font-heading)',
+              color: mode === 'demo' ? '#ffffff' : 'var(--glass-text-muted)',
+              cursor: 'pointer',
+              letterSpacing: '0.05em',
+              transition: 'all 0.25s ease',
+              boxShadow: mode === 'demo' ? '0 0 10px rgba(217, 119, 6, 0.4)' : 'none'
+            }}
+          >
+            DEMO PLAYGROUND
+          </button>
+          <button
+            onClick={() => {
+              setMode('live');
+              triggerToast('⚠️ ALERT: ACTIVE DEPLOYMENT [LIVE SUBREDDIT FEED] ENABLED.', 'warning');
+            }}
+            style={{
+              background: mode === 'live' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '4px 14px',
+              fontSize: '9px',
+              fontWeight: 700,
+              fontFamily: 'var(--font-heading)',
+              color: mode === 'live' ? '#ffffff' : 'var(--glass-text-muted)',
+              cursor: 'pointer',
+              letterSpacing: '0.05em',
+              transition: 'all 0.25s ease',
+              boxShadow: mode === 'live' ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none'
+            }}
+          >
+            LIVE PRODUCTION
+          </button>
+        </div>
         
-        {/* Center: Server Diagnostics status & Clock */}
+        {/* Right Section: Diagnostics, Theme & Profile */}
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <span style={{
             display: 'flex',
@@ -274,50 +422,13 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           }}>
             🕒 {dateStr} {timeStr}
           </span>
-        </div>
-
-        {/* Right Section: Active Operator Profile Avatar & Theme Selector */}
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          {/* Dynamic premium Theme Switcher Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--glass-text-muted)', fontFamily: 'var(--font-heading)', letterSpacing: '0.05em' }}>PALETTE:</span>
-            <select
-              value={theme}
-              onChange={(e) => {
-                setTheme(e.target.value);
-                triggerToast(`🎨 Style palette transitioned to [${e.target.value.toUpperCase()}]`, 'success');
-              }}
-              style={{
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '10px',
-                fontFamily: 'var(--font-mono)',
-                color: '#fff',
-                cursor: 'pointer',
-                outline: 'none',
-                transition: 'all 0.2s ease',
-                WebkitAppearance: 'none',
-                MozAppearance: 'none',
-                appearance: 'none',
-                borderRight: '8px solid transparent' // spacer for arrow visual weight
-              }}
-            >
-              <option value="carbon">Carbon Amber</option>
-              <option value="glacier">Glacier Breeze</option>
-              <option value="sage">Nordic Sage</option>
-              <option value="amethyst">Velvet Lilac</option>
-              <option value="imperial">Imperial Gold</option>
-            </select>
-          </div>
-
+          
           <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#ffffff' }}>{profile.username}</span>
             <span style={{ fontSize: '8px', fontWeight: 500, color: 'var(--accent-gold)', fontFamily: "var(--font-mono)", letterSpacing: '0.05em', marginTop: '-1px' }}>
-              {profile.roleLabel.toUpperCase()} // LVL {profile.trainingLevel}
+              {mode === 'live' ? 'LIVE OPERATOR' : `${profile.roleLabel.toUpperCase()} // LVL ${profile.trainingLevel}`}
             </span>
           </div>
 
@@ -363,44 +474,64 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           zIndex: 1,
           pointerEvents: 'auto'
         }}>
-          {/* Widget A: Profile Stats Radar Card */}
-          <div className="desktop-widget" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h4 style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: '8px', color: 'var(--accent-gold)', letterSpacing: '0.15em' }}>
-              OPERATOR STATUS SUMMARY
-            </h4>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ position: 'relative', width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center' }}>
-                {/* SVG Progress Ring */}
-                <svg width="60" height="60" viewBox="0 0 60 60">
-                  <circle cx="30" cy="30" r="26" stroke="rgba(255,255,255,0.04)" strokeWidth="3" fill="transparent" />
-                  <circle cx="30" cy="30" r="26" stroke="var(--accent-gold)" strokeWidth="3" fill="transparent" 
-                    strokeDasharray="163" 
-                    strokeDashoffset={163 - (163 * Math.min(100, (profile.correctScenarios / (profile.totalScenarios || 1)) * 100)) / 100}
-                    strokeLinecap="round"
-                    transform="rotate(-90 30 30)"
-                  />
-                </svg>
-                <span style={{ position: 'absolute', fontSize: '9px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#ffffff' }}>
-                  {profile.totalScenarios > 0 ? Math.round((profile.correctScenarios / profile.totalScenarios) * 100) : 0}%
-                </span>
+          {/* Widget A: Operator Stats radar Card (Show training stats in Demo Mode, Subreddit details in Live Mode) */}
+          {mode === 'demo' ? (
+            <div className="desktop-widget" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <h4 style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: '8px', color: 'var(--accent-gold)', letterSpacing: '0.15em' }}>
+                OPERATOR STATUS SUMMARY
+              </h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ position: 'relative', width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center' }}>
+                  <svg width="60" height="60" viewBox="0 0 60 60">
+                    <circle cx="30" cy="30" r="26" stroke="rgba(255,255,255,0.04)" strokeWidth="3" fill="transparent" />
+                    <circle cx="30" cy="30" r="26" stroke="var(--accent-gold)" strokeWidth="3" fill="transparent" 
+                      strokeDasharray="163" 
+                      strokeDashoffset={163 - (163 * Math.min(100, (profile.correctScenarios / (profile.totalScenarios || 1)) * 100)) / 100}
+                      strokeLinecap="round"
+                      transform="rotate(-90 30 30)"
+                    />
+                  </svg>
+                  <span style={{ position: 'absolute', fontSize: '9px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#ffffff' }}>
+                    {profile.totalScenarios > 0 ? Math.round((profile.correctScenarios / profile.totalScenarios) * 100) : 0}%
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)' }}>Correct Evaluation Rate</span>
+                  <span style={{ fontSize: '15px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#ffffff' }}>{profile.xp} <span style={{ fontSize: '9px', color: 'var(--accent-gold)', fontWeight: 500 }}>XP Total</span></span>
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)' }}>Correct Evaluation Rate</span>
-                <span style={{ fontSize: '15px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#ffffff' }}>{profile.xp} <span style={{ fontSize: '9px', color: 'var(--accent-gold)', fontWeight: 500 }}>XP Total</span></span>
+              <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.05)' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--glass-text-muted)' }}>
+                <div>
+                  <span>Reviewed:</span>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#ffffff', marginTop: '2px' }}>{profile.queueReviewed} Items</div>
+                </div>
+                <div>
+                  <span>Votes Cast:</span>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#ffffff', marginTop: '2px' }}>{profile.consensusVotesCast} Ballots</div>
+                </div>
               </div>
             </div>
-            <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.05)' }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--glass-text-muted)' }}>
-              <div>
-                <span>Reviewed:</span>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: '#ffffff', marginTop: '2px' }}>{profile.queueReviewed} Items</div>
+          ) : (
+            <div className="desktop-widget" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(0, 0, 0, 0.45) 100%)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
+              <h4 style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: '8px', color: '#10b981', letterSpacing: '0.15em' }}>
+                SUBREDDIT LIVE TELEMETRY
+              </h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span style={{ fontSize: '28px' }}>📡</span>
+                <div>
+                  <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)', display: 'block' }}>Connected Community</span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>r/{settings.subredditName}</span>
+                </div>
               </div>
-              <div>
-                <span>Votes Cast:</span>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: '#ffffff', marginTop: '2px' }}>{profile.consensusVotesCast} Ballots</div>
+              <div style={{ height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--glass-text-muted)' }}>
+                <div>LIVE ENDPOINT CONNECTION: <strong style={{ color: '#10b981' }}>ESTABLISHED</strong></div>
+                <div>AUTODEP COMMIT BRIDGE: <strong style={{ color: '#10b981' }}>ACTIVE</strong></div>
+                <div>AUDIT TRAIL LOGGING: <strong style={{ color: '#10b981' }}>FULL COMPLIANCE</strong></div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Widget B: Real-Time Node Health Telemetry */}
           <div className="desktop-widget" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -477,20 +608,36 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
             onDoubleClick={() => openWindow('queue')}
           />
           <DesktopIcon 
+            id="automod"
+            label="AutoMod Rules"
+            icon="🛡️"
+            isSelected={selectedIcon === 'automod'}
+            onSelect={() => setSelectedIcon('automod')}
+            onDoubleClick={() => openWindow('automod')}
+          />
+          <DesktopIcon 
+            id="modlog"
+            label="Mod Logs"
+            icon="🖥️"
+            isSelected={selectedIcon === 'modlog'}
+            onSelect={() => setSelectedIcon('modlog')}
+            onDoubleClick={() => openWindow('modlog')}
+          />
+          <DesktopIcon 
+            id="usergrid"
+            label="User Registry"
+            icon="👥"
+            isSelected={selectedIcon === 'usergrid'}
+            onSelect={() => setSelectedIcon('usergrid')}
+            onDoubleClick={() => openWindow('usergrid')}
+          />
+          <DesktopIcon 
             id="settings"
             label="Control Panel"
             icon="⚙️"
             isSelected={selectedIcon === 'settings'}
             onSelect={() => setSelectedIcon('settings')}
             onDoubleClick={() => openWindow('settings')}
-          />
-          <DesktopIcon 
-            id="audits"
-            label="Audit Logs"
-            icon="📃"
-            isSelected={selectedIcon === 'audits'}
-            onSelect={() => setSelectedIcon('audits')}
-            onDoubleClick={() => setAuditsOpen(true)}
           />
         </div>
 
@@ -507,6 +654,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           onClose={() => closeWindow('academy')}
           isActive={activeWindow === 'academy'}
           onFocus={() => focusWindow('academy')}
+          isMinimized={windows.academy.isMinimized}
+          isMaximized={windows.academy.isMaximized}
+          onMinimize={() => minimizeWindow('academy')}
+          onMaximize={() => maximizeWindow('academy')}
           defaultPosition={windows.academy.position}
           defaultSize={{ width: windows.academy.width, height: windows.academy.height }}
         >
@@ -526,6 +677,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           onClose={() => closeWindow('consensus')}
           isActive={activeWindow === 'consensus'}
           onFocus={() => focusWindow('consensus')}
+          isMinimized={windows.consensus.isMinimized}
+          isMaximized={windows.consensus.isMaximized}
+          onMinimize={() => minimizeWindow('consensus')}
+          onMaximize={() => maximizeWindow('consensus')}
           defaultPosition={windows.consensus.position}
           defaultSize={{ width: windows.consensus.width, height: windows.consensus.height }}
         >
@@ -544,6 +699,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           onClose={() => closeWindow('typewriter')}
           isActive={activeWindow === 'typewriter'}
           onFocus={() => focusWindow('typewriter')}
+          isMinimized={windows.typewriter.isMinimized}
+          isMaximized={windows.typewriter.isMaximized}
+          onMinimize={() => minimizeWindow('typewriter')}
+          onMaximize={() => maximizeWindow('typewriter')}
           defaultPosition={windows.typewriter.position}
           defaultSize={{ width: windows.typewriter.width, height: windows.typewriter.height }}
         >
@@ -559,17 +718,79 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           onClose={() => closeWindow('queue')}
           isActive={activeWindow === 'queue'}
           onFocus={() => focusWindow('queue')}
+          isMinimized={windows.queue.isMinimized}
+          isMaximized={windows.queue.isMaximized}
+          onMinimize={() => minimizeWindow('queue')}
+          onMaximize={() => maximizeWindow('queue')}
           defaultPosition={windows.queue.position}
-          defaultSize={{ width: windows.queue.width, height: windows.queue.height }}
+          defaultSize={{ width: windows.queue.width, height: windows.windows ? '540px' : windows.queue.height }}
         >
           <QueueConsole 
             profile={profile}
             onProfileUpdate={handleProfileUpdate}
             triggerToast={triggerToast}
+            mode={mode}
           />
         </RetroWindow>
 
-        {/* 5. Control Panel / Settings window */}
+        {/* 5. AutoModerator Rules window */}
+        <RetroWindow
+          id="automod"
+          title={windows.automod.title}
+          icon={windows.automod.icon}
+          isOpen={windows.automod.isOpen}
+          onClose={() => closeWindow('automod')}
+          isActive={activeWindow === 'automod'}
+          onFocus={() => focusWindow('automod')}
+          isMinimized={windows.automod.isMinimized}
+          isMaximized={windows.automod.isMaximized}
+          onMinimize={() => minimizeWindow('automod')}
+          onMaximize={() => maximizeWindow('automod')}
+          defaultPosition={windows.automod.position}
+          defaultSize={{ width: windows.automod.width, height: windows.automod.height }}
+        >
+          <AutomodPanel triggerToast={triggerToast} />
+        </RetroWindow>
+
+        {/* 6. Live Moderation Audit Stream window */}
+        <RetroWindow
+          id="modlog"
+          title={windows.modlog.title}
+          icon={windows.modlog.icon}
+          isOpen={windows.modlog.isOpen}
+          onClose={() => closeWindow('modlog')}
+          isActive={activeWindow === 'modlog'}
+          onFocus={() => focusWindow('modlog')}
+          isMinimized={windows.modlog.isMinimized}
+          isMaximized={windows.modlog.isMaximized}
+          onMinimize={() => minimizeWindow('modlog')}
+          onMaximize={() => maximizeWindow('modlog')}
+          defaultPosition={windows.modlog.position}
+          defaultSize={{ width: windows.modlog.width, height: windows.modlog.height }}
+        >
+          <ModLogConsole triggerToast={triggerToast} />
+        </RetroWindow>
+
+        {/* 7. Subreddit User Management window */}
+        <RetroWindow
+          id="usergrid"
+          title={windows.usergrid.title}
+          icon={windows.usergrid.icon}
+          isOpen={windows.usergrid.isOpen}
+          onClose={() => closeWindow('usergrid')}
+          isActive={activeWindow === 'usergrid'}
+          onFocus={() => focusWindow('usergrid')}
+          isMinimized={windows.usergrid.isMinimized}
+          isMaximized={windows.usergrid.isMaximized}
+          onMinimize={() => minimizeWindow('usergrid')}
+          onMaximize={() => maximizeWindow('usergrid')}
+          defaultPosition={windows.usergrid.position}
+          defaultSize={{ width: windows.usergrid.width, height: windows.usergrid.height }}
+        >
+          <UserControlRegistry triggerToast={triggerToast} />
+        </RetroWindow>
+
+        {/* 8. Control Panel / Settings window */}
         <RetroWindow
           id="settings"
           title={windows.settings.title}
@@ -578,6 +799,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           onClose={() => closeWindow('settings')}
           isActive={activeWindow === 'settings'}
           onFocus={() => focusWindow('settings')}
+          isMinimized={windows.settings.isMinimized}
+          isMaximized={windows.settings.isMaximized}
+          onMinimize={() => minimizeWindow('settings')}
+          onMaximize={() => maximizeWindow('settings')}
           defaultPosition={windows.settings.position}
           defaultSize={{ width: windows.settings.width, height: windows.settings.height }}
         >
@@ -590,7 +815,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
           />
         </RetroWindow>
 
-        {/* 6. Static Audit Ticker Logs viewer window */}
+        {/* 9. Static Audit Ticker Logs viewer window */}
         {auditsOpen && (
           <RetroWindow
             id="audits"
@@ -781,19 +1006,42 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
             { id: 'consensus', label: 'Consensus Desk (Ballots)', icon: '⚖️' },
             { id: 'typewriter', label: 'Typewriter (Canned Rules)', icon: '⌨️' },
             { id: 'queue', label: 'Priority Queue (Live Mod)', icon: '🗃️' },
+            { id: 'automod', label: 'AutoMod Rules (YAML)', icon: '🛡️' },
+            { id: 'modlog', label: 'Audit Log Stream (Live)', icon: '🖥️' },
+            { id: 'usergrid', label: 'User Registry (Bans)', icon: '👥' },
             { id: 'settings', label: 'Control Panel (Settings)', icon: '⚙️' }
           ] as const).map((item) => {
-            const isOpen = windows[item.id].isOpen;
+            const win = windows[item.id];
+            const isOpen = win.isOpen;
+            const isMinimized = win.isMinimized;
             return (
               <button
                 key={item.id}
-                onClick={() => openWindow(item.id)}
+                onClick={() => {
+                  if (!isOpen) {
+                    openWindow(item.id);
+                  } else {
+                    toggleMinimize(item.id);
+                  }
+                }}
                 className="dock-item"
                 data-label={item.label}
-                style={{ outline: 'none' }}
+                style={{ 
+                  outline: 'none',
+                  background: isMinimized ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+                  transform: isMinimized ? 'scale(0.95)' : 'scale(1)'
+                }}
               >
                 <span style={{ fontSize: '24px' }}>{item.icon}</span>
-                {isOpen && <span className="dock-dot" />}
+                {isOpen && (
+                  <span 
+                    className="dock-dot" 
+                    style={{ 
+                      backgroundColor: isMinimized ? 'rgba(255, 255, 255, 0.4)' : 'var(--accent-gold)',
+                      boxShadow: isMinimized ? 'none' : '0 0 8px var(--accent-gold)'
+                    }} 
+                  />
+                )}
               </button>
             );
           })}

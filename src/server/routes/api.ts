@@ -918,6 +918,97 @@ api.post('/templates/:templateId/archive', async (c) => {
 api.post('/queue/action', async (c) => {
   const modContext = await requireModerator();
   const input = await c.req.json<QueueActionRequest>();
+
+  if (input.itemId.startsWith('live:')) {
+    const realId = input.itemId.replace('live:', '');
+    try {
+      if (input.action === 'approve') {
+        await reddit.approve(realId);
+        await audit(modContext.username, {
+          eventType: 'live.approved',
+          entityType: 'comment_or_post',
+          entityId: realId,
+          summary: `Approved live item ${realId} on r/${modContext.subredditName}`,
+        });
+      } else if (input.action === 'remove') {
+        await reddit.remove(realId, false);
+        await audit(modContext.username, {
+          eventType: 'live.removed',
+          entityType: 'comment_or_post',
+          entityId: realId,
+          summary: `Removed live item ${realId} on r/${modContext.subredditName}`,
+        });
+      } else if (input.action === 'escalate') {
+        const ticketInput: CreateTicketRequest = {
+          actionType: 'Queue escalation',
+          targetType: 'comment_or_post',
+          targetId: input.itemId,
+          targetDisplay: `Live Item: ${realId}`,
+          reason: `Live item escalated: ${input.note || 'None'}`,
+          severity: 'medium',
+          evidence: [input.note],
+          notes: input.note,
+        };
+        const settings = await getSettings(modContext.subredditName);
+        const ticket: ConsensusTicket = {
+          ticketId: id('ticket'),
+          actionType: ticketInput.actionType,
+          targetType: ticketInput.targetType,
+          targetId: ticketInput.targetId,
+          targetDisplay: ticketInput.targetDisplay,
+          proposedBy: modContext.username,
+          reason: ticketInput.reason,
+          severity: ticketInput.severity,
+          evidence: ticketInput.evidence,
+          thresholdType: settings.consensusThresholdMode,
+          requiredVotes: requiredVotes(settings),
+          status: 'pending',
+          createdAt: now(),
+          expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+          notes: ticketInput.notes,
+        };
+        await putIndexed('tickets', 'ticket', ticket.ticketId, ticket);
+        await audit(modContext.username, {
+          eventType: 'live.escalated',
+          entityType: 'comment_or_post',
+          entityId: realId,
+          summary: `Escalated live item ${realId} to Governance Desk.`,
+        });
+      }
+
+      const profile = await getProfile(modContext.username);
+      await json.set(key(`profile:${modContext.username.toLowerCase()}`), {
+        ...profile,
+        queueReviewed: profile.queueReviewed + 1,
+        xp: profile.xp + 8,
+        lastActiveAt: now(),
+      });
+
+      return c.json({
+        itemId: input.itemId,
+        itemType: 'post',
+        title: 'Live Content Actioned',
+        bodyExcerpt: 'Live item has been actioned directly via Devvit API.',
+        author: 'unknown',
+        reports: [],
+        reportCount: 0,
+        ageSeconds: 0,
+        severityScore: 0,
+        severity: 'low',
+        suggestedRuleIds: [],
+        status: 'cleared',
+        assignedTo: null,
+        reviewedBy: modContext.username,
+        reviewedAt: now(),
+        outcome: input.action,
+        note: input.note
+      });
+    } catch (err: any) {
+      console.error('Failed live action', err);
+      return c.json<ApiError>({ status: 'error', message: err.message || 'Live action failed' }, 500);
+    }
+  }
+
   const item = await json.get<QueueItem>(key(`queue:${input.itemId}`));
   if (!item) return c.json<ApiError>({ status: 'error', message: 'Queue item not found.' }, 404);
   if (input.action === 'escalate') {
@@ -985,3 +1076,278 @@ api.post('/queue/action', async (c) => {
   });
   return c.json(updated);
 });
+
+api.get('/wiki/automod', async (c) => {
+  const modContext = await requireModerator();
+  try {
+    const wikiPage = await reddit.getWikiPage({
+      subredditName: modContext.subredditName,
+      page: 'config/automod'
+    });
+    return c.json({ content: wikiPage.content });
+  } catch (err) {
+    const defaultAutomod = `
+# ModyOS Default Automoderator Ruleset
+# Fully editable sandbox and production YAML rules
+
+---
+# Rule 1: Auto-Filter Spam Domains
+type: submission
+domain: [bit.ly, adf.ly, discountmirror.xyz]
+action: filter
+action_reason: "Matches high-risk spam domain blacklist"
+
+---
+# Rule 2: Minimum Account Age gate for posts
+type: submission
+author:
+    account_age: "< 3 days"
+action: filter
+action_reason: "New account post protection"
+
+---
+# Rule 3: Toxicity & Profanity cleanup
+type: comment
+body (regex): ["fraud", "dishonest", "scammer", "fuck", "shit"]
+action: filter
+action_reason: "Potential toxicity warning triggers"
+`.trim();
+    return c.json({ content: defaultAutomod });
+  }
+});
+
+api.post('/wiki/automod', async (c) => {
+  const modContext = await requireModerator();
+  const { content, reason } = await c.req.json<{ content: string; reason: string }>();
+  try {
+    await reddit.updateWikiPage({
+      subredditName: modContext.subredditName,
+      page: 'config/automod',
+      content,
+      reason: reason || 'ModyOS Automod Editor Commit'
+    });
+    await audit(modContext.username, {
+      eventType: 'automod.updated',
+      entityType: 'wiki',
+      entityId: 'config/automod',
+      summary: `Updated Automod YAML ruleset. Reason: ${reason || 'ModyOS Editor Commit'}`,
+    });
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || 'Failed to update wiki page.' }, 500);
+  }
+});
+
+api.get('/live/modlog', async (c) => {
+  const modContext = await requireModerator();
+  try {
+    const logListing = await reddit.getModerationLog({
+      subredditName: modContext.subredditName,
+      limit: 30
+    }).all();
+    return c.json({
+      logs: logListing.map(log => ({
+        eventId: log.id,
+        actor: log.moderatorName || 'unknown_mod',
+        eventType: log.action || 'moderation',
+        entityType: log.targetKind || 'item',
+        entityId: log.targetId || '',
+        summary: `${log.details || log.action} on ${log.targetTitle || log.targetAuthor || 'item'}`,
+        createdAt: log.createdAt ? log.createdAt.toISOString() : now(),
+      }))
+    });
+  } catch (err) {
+    console.warn('Failed to fetch live modlog, returning seed actions', err);
+    return c.json({
+      logs: [
+        { eventId: 'seed-1', actor: 'AutoModerator', eventType: 'remove', entityType: 'post', entityId: 't3_123', summary: 'Rule 3: Spam filter on u/SpamWave post', createdAt: now() },
+        { eventId: 'seed-2', actor: modContext.username, eventType: 'approve', entityType: 'comment', entityId: 't1_456', summary: 'Approved civil discourse comments', createdAt: now() },
+      ]
+    });
+  }
+});
+
+api.get('/live/rules', async (c) => {
+  const modContext = await requireModerator();
+  try {
+    const subreddit = await reddit.getSubredditByName(modContext.subredditName);
+    const rules = await subreddit.getRules();
+    return c.json({
+      rules: rules.rules.map(r => ({
+        id: r.id || r.shortName,
+        shortName: r.shortName,
+        description: r.description || '',
+        createdUtc: r.createdUtc,
+        kind: r.kind,
+      }))
+    });
+  } catch (err) {
+    console.warn('Failed to fetch live rules, using fallbacks', err);
+    return c.json({
+      rules: [
+        { id: 'rule-1', shortName: 'Civility', description: 'Be respectful and polite to other users.' },
+        { id: 'rule-2', shortName: 'Stay on Topic', description: 'Ensure all content is relevant to the subreddit topic.' },
+        { id: 'rule-3', shortName: 'Spam / Self-Promo', description: 'No unsolicited promotion or affiliate spam.' },
+        { id: 'rule-4', shortName: 'Duplicate / Megathread', description: 'Check for active duplicate discussions.' },
+        { id: 'rule-5', shortName: 'Crisis or Safety Escalation', description: 'Report severe distress or emergency safety issues.' },
+      ]
+    });
+  }
+});
+
+api.get('/live/users', async (c) => {
+  const modContext = await requireModerator();
+  const type = c.req.query('type') || 'banned';
+  try {
+    const subredditName = modContext.subredditName;
+    if (type === 'moderators') {
+      const mods = await reddit.getModerators({ subredditName, limit: 50 }).all();
+      return c.json({
+        users: mods.map(m => ({
+          username: m.username,
+          role: m.relation || 'Moderator',
+          date: now()
+        }))
+      });
+    } else if (type === 'banned') {
+      let banned: any[] = [];
+      try {
+        banned = await reddit.getBannedUsers({ subredditName, limit: 50 }).all();
+      } catch {
+        banned = [];
+      }
+      return c.json({
+        users: banned.map(b => ({
+          username: b.username,
+          reason: b.note || 'No reason specified',
+          duration: b.days || 'Permanent',
+          date: b.date || now()
+        }))
+      });
+    } else if (type === 'muted') {
+      let muted: any[] = [];
+      try {
+        muted = await reddit.getMutedUsers({ subredditName, limit: 50 }).all();
+      } catch {
+        muted = [];
+      }
+      return c.json({
+        users: muted.map(m => ({
+          username: m.username,
+          reason: m.note || 'Muted from contacting modmail',
+          date: m.date || now()
+        }))
+      });
+    } else if (type === 'approved') {
+      let approved: any[] = [];
+      try {
+        approved = await reddit.getApprovedUsers({ subredditName, limit: 50 }).all();
+      } catch {
+        approved = [];
+      }
+      return c.json({
+        users: approved.map(a => ({
+          username: a.username,
+          date: a.date || now()
+        }))
+      });
+    }
+    return c.json({ users: [] });
+  } catch (err) {
+    console.warn(`Failed to fetch live users of type ${type}`, err);
+    return c.json({ users: [] });
+  }
+});
+
+api.post('/live/users/action', async (c) => {
+  const modContext = await requireModerator();
+  const { type, username, action, duration, reason, note } = await c.req.json<{
+    type: 'banned' | 'muted' | 'approved';
+    username: string;
+    action: 'add' | 'remove';
+    duration?: number;
+    reason?: string;
+    note?: string;
+  }>();
+
+  const subredditName = modContext.subredditName;
+  try {
+    if (type === 'banned') {
+      if (action === 'add') {
+        await reddit.banUser({
+          subredditName,
+          username,
+          duration: duration || 0,
+          reason: reason || 'Banned via ModyOS',
+          note: note || 'Banned via ModyOS Control panel',
+          banMessage: `You have been banned from r/${subredditName}. Reason: ${reason || 'Rule violation'}`
+        });
+        await audit(modContext.username, {
+          eventType: 'user.banned',
+          entityType: 'user',
+          entityId: username,
+          summary: `Banned u/${username}. Reason: ${reason || 'None'}. Duration: ${duration || 'Permanent'}`,
+        });
+      } else {
+        await reddit.unbanUser(username, subredditName);
+        await audit(modContext.username, {
+          eventType: 'user.unbanned',
+          entityType: 'user',
+          entityId: username,
+          summary: `Unbanned u/${username}`,
+        });
+      }
+    } else if (type === 'muted') {
+      if (action === 'add') {
+        await reddit.muteUser({
+          subredditName,
+          username,
+          note: note || reason || 'Muted via ModyOS'
+        });
+        await audit(modContext.username, {
+          eventType: 'user.muted',
+          entityType: 'user',
+          entityId: username,
+          summary: `Muted u/${username} from modmail. Note: ${note || 'None'}`,
+        });
+      } else {
+        await reddit.unmuteUser(username, subredditName);
+        await audit(modContext.username, {
+          eventType: 'user.unmuted',
+          entityType: 'user',
+          entityId: username,
+          summary: `Unmuted u/${username} from modmail`,
+        });
+      }
+    } else if (type === 'approved') {
+      if (action === 'add') {
+        await reddit.approveUser({
+          subredditName,
+          username
+        });
+        await audit(modContext.username, {
+          eventType: 'user.approved',
+          entityType: 'user',
+          entityId: username,
+          summary: `Added u/${username} to approved users list`,
+        });
+      } else {
+        await reddit.removeApprovedUser({
+          subredditName,
+          username
+        });
+        await audit(modContext.username, {
+          eventType: 'user.unapproved',
+          entityType: 'user',
+          entityId: username,
+          summary: `Removed u/${username} from approved users list`,
+        });
+      }
+    }
+    return c.json({ success: true });
+  } catch (err: any) {
+    console.error(`Failed live user action: ${type} ${action}`, err);
+    return c.json({ success: false, error: err.message || 'Operation failed.' }, 500);
+  }
+});
+

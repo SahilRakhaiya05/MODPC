@@ -11,6 +11,10 @@ interface RetroWindowProps {
   defaultPosition?: { x: number; y: number };
   defaultSize?: { width: string; height: string };
   children: React.ReactNode;
+  isMinimized?: boolean;
+  isMaximized?: boolean;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
 }
 
 export const RetroWindow: React.FC<RetroWindowProps> = ({
@@ -23,7 +27,11 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   onFocus,
   defaultPosition = { x: 50, y: 50 },
   defaultSize = { width: '450px', height: '400px' },
-  children
+  children,
+  isMinimized = false,
+  isMaximized = false,
+  onMinimize,
+  onMaximize
 }) => {
   const [position, setPosition] = useState(() => ({
     x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
@@ -39,6 +47,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     
     // Avoid dragging if click hits buttons
     if ((e.target as HTMLElement).closest('.window-ctrl-dot')) return;
+    if (isMaximized) return; // Disable drag when maximized
 
     onFocus();
     setIsDragging(true);
@@ -89,16 +98,19 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       onMouseDown={onFocus}
       className={`glass-window glass-panel ${isActive ? 'active' : ''}`}
       style={{
-        width: defaultSize.width,
-        height: defaultSize.height,
-        left: `${position.x}px`,
-        top: `${position.y}px`,
+        width: isMaximized ? '100vw' : defaultSize.width,
+        height: isMaximized ? 'calc(100vh - 40px - 90px)' : defaultSize.height,
+        left: isMaximized ? '0px' : `${position.x}px`,
+        top: isMaximized ? '40px' : `${position.y}px`,
         zIndex: isActive ? 100 : 20,
         position: 'absolute',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+        transition: 'all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1)',
+        opacity: isMinimized ? 0 : 1,
+        transform: isMinimized ? 'scale(0.8) translateY(100px)' : 'scale(1) translateY(0)',
+        pointerEvents: isMinimized ? 'none' : 'auto',
       }}
     >
       {/* Title bar / Header (translucent) */}
@@ -133,8 +145,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             title="Minimize"
             onClick={(e) => {
               e.stopPropagation();
-              // In this WebOS, minimizing just triggers close or visual hide
-              onClose();
+              if (onMinimize) onMinimize();
+              else onClose();
             }}
           />
           <button 
@@ -142,7 +154,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             title="Maximize"
             onClick={(e) => {
               e.stopPropagation();
-              // Can toggle maximize/restore state or remain aesthetic
+              if (onMaximize) onMaximize();
             }}
           />
         </div>

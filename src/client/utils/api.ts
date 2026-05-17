@@ -487,5 +487,42 @@ export const api = {
   async getAudits(): Promise<{ audits: AuditEvent[] }> {
     const statusData = await this.getStatus();
     return { audits: statusData.recentAudits };
+  },
+
+  async getAutomod(): Promise<{ content: string }> {
+    return await apiFetch<{ content: string }>('/wiki/automod');
+  },
+
+  async saveAutomod(content: string, reason: string): Promise<{ success: boolean }> {
+    return await apiFetch<{ success: boolean }>('/wiki/automod', {
+      method: 'POST',
+      body: JSON.stringify({ content, reason }),
+    });
+  },
+
+  async getLiveModlog(): Promise<{ logs: any[] }> {
+    return await apiFetch<{ logs: any[] }>('/live/modlog');
+  },
+
+  async getLiveRules(): Promise<{ rules: any[] }> {
+    return await apiFetch<{ rules: any[] }>('/live/rules');
+  },
+
+  async getLiveUsers(type: 'banned' | 'muted' | 'approved' | 'moderators'): Promise<{ users: any[] }> {
+    return await apiFetch<{ users: any[] }>(`/live/users?type=${type}`);
+  },
+
+  async liveUserAction(payload: {
+    type: 'banned' | 'muted' | 'approved';
+    username: string;
+    action: 'add' | 'remove';
+    duration?: number;
+    reason?: string;
+    note?: string;
+  }): Promise<{ success: boolean }> {
+    return await apiFetch<{ success: boolean }>('/live/users/action', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 };
