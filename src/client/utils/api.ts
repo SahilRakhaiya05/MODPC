@@ -524,5 +524,38 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  },
+
+  async getLiveModmail(): Promise<{ conversations: any[] }> {
+    return await apiFetch<{ conversations: any[] }>('/live/modmail');
+  },
+
+  async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean }): Promise<{ success: boolean; thread?: any }> {
+    return await apiFetch<{ success: boolean; thread?: any }>('/live/modmail/reply', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async actionModmail(payload: { threadId: string; action: 'archive' | 'unarchive' | 'highlight' | 'delete' }): Promise<{ success: boolean }> {
+    return await apiFetch<{ success: boolean }>('/live/modmail/action', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getLiveFlairs(): Promise<{ postFlairs: any[]; userFlairs: any[] }> {
+    return await apiFetch<{ postFlairs: any[]; userFlairs: any[] }>('/live/flairs');
+  },
+
+  async saveFlairTemplate(payload: { type: 'post' | 'user'; text: string; backgroundColor: string; textColor: 'light' | 'dark'; modOnly: boolean; flairId?: string }): Promise<{ success: boolean; flairs: any[] }> {
+    return await apiFetch<{ success: boolean; flairs: any[] }>('/live/flairs/action', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getLiveInsights(): Promise<any> {
+    return await apiFetch<any>('/live/insights');
   }
 };
