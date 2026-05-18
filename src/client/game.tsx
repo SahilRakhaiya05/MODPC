@@ -17,6 +17,75 @@ type Toast = {
   tone: 'info' | 'success' | 'warning' | 'error';
 };
 
+const createPreviewStatus = (): SystemStatus => ({
+  status: 'preview',
+  redisStatus: 'offline-preview',
+  settings: {
+    subredditName: 'r/ProductMods (Standalone)',
+    initializedAt: new Date().toISOString(),
+    consensusThresholdMode: 'percent',
+    consensusFixedCount: 3,
+    consensusPercent: 66,
+    highImpactActions: ['permanent ban', 'mass removal', 'settings change'],
+    trainingRequiredLevel: 2,
+    themeMode: 'modern',
+    queueScoringConfig: { reportWeight: 1.5, ageWeight: 0.1, keyWeight: 5 },
+    mobileCompactMode: true,
+    anonymousVotesUntilClosed: true,
+    templateApprovalRequired: false,
+    scenarioDifficultyMix: 'balanced',
+  },
+  moderatorProfile: {
+    username: 'u/preview_mod',
+    firstSeenAt: new Date().toISOString(),
+    roleLabel: 'Lead moderator',
+    trainingLevel: 4,
+    xp: 276,
+    totalScenarios: 28,
+    correctScenarios: 24,
+    queueReviewed: 139,
+    consensusVotesCast: 17,
+    lastActiveAt: new Date().toISOString(),
+    streak: 6,
+    missedConcepts: ['edge-case harassment', 'brigade signals'],
+  },
+  recentAudits: [
+    {
+      eventId: 'preview-1',
+      actor: 'u/preview_mod',
+      eventType: 'queue.reviewed',
+      entityType: 'comment',
+      entityId: 't1_preview',
+      summary: 'Cleared a reported comment after rule match review.',
+      before: null,
+      after: null,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      eventId: 'preview-2',
+      actor: 'u/senior_mod',
+      eventType: 'consensus.created',
+      entityType: 'user',
+      entityId: 'preview-user',
+      summary: 'Opened a consensus ticket for repeated spam behavior.',
+      before: null,
+      after: null,
+      createdAt: new Date(Date.now() - 1000 * 60 * 16).toISOString(),
+    },
+    {
+      eventId: 'preview-3',
+      actor: 'u/automod_helper',
+      eventType: 'automod.drafted',
+      entityType: 'thread',
+      entityId: 'preview-thread',
+      summary: 'Drafted a link-frequency rule for moderator approval.',
+      before: null,
+      after: null,
+      createdAt: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
+    },
+  ],
+});
+
 export function App() {
   const [data, setData] = useState<SystemStatus | null>(null);
   const [booting, setBooting] = useState<boolean>(true);
@@ -32,6 +101,10 @@ export function App() {
       const statusData = await api.getStatus();
       setData(statusData);
     } catch (err) {
+      if (import.meta.env.DEV) {
+        setData(createPreviewStatus());
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Unable to load ModDesk OS.');
     }
   }, []);
@@ -43,6 +116,10 @@ export function App() {
       const statusData = await api.getStatus();
       setData(statusData);
     } catch (err) {
+      if (import.meta.env.DEV) {
+        setData(createPreviewStatus());
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to refresh state after system reset.');
     } finally {
       // Allow a brief delay for system initialization feeling

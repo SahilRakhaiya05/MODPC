@@ -1342,6 +1342,7 @@ api.post('/live/users/action', async (c) => {
           entityId: username,
           summary: `Removed u/${username} from approved users list`,
         });
+      }
     }
     return c.json({ success: true });
   } catch (err: any) {
@@ -1709,5 +1710,4 @@ api.get('/live/insights', async (c) => {
 
   return c.json(mockInsights);
 });
-
 
