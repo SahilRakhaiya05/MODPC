@@ -4,12 +4,17 @@ import { QueueItem, ModeratorProfile } from '../types';
 import { api } from '../utils/api';
 import { SeverityBadge } from '../components/SeverityBadge';
 
-interface QueueConsoleProps {
+type QueueConsoleProps = {
   profile: ModeratorProfile;
   onProfileUpdate: (p: ModeratorProfile) => void;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
   mode: 'demo' | 'live';
-}
+};
+
+type LiveRule = {
+  id: string;
+  shortName: string;
+};
 
 export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUpdate, triggerToast, mode }) => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -17,7 +22,8 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
   const [escalateNote, setEscalateNote] = useState('');
   const [isEscalating, setIsEscalating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [liveRules, setLiveRules] = useState<any[]>([]);
+  const [liveRules, setLiveRules] = useState<LiveRule[]>([]);
+  const [confirmLiveAction, setConfirmLiveAction] = useState(false);
 
   const fetchQueue = async () => {
     setIsLoading(true);
@@ -58,11 +64,18 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       return;
     }
 
+    const requiresLiveConfirmation = selectedItem.itemId.startsWith('live:') && actionType !== 'escalate';
+    if (requiresLiveConfirmation && !confirmLiveAction) {
+      triggerToast('Confirm the guarded live action before changing Reddit content.', 'warning');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const res = await api.queueAction({
         itemId: selectedItem.itemId,
         actionType,
+        confirmation: confirmLiveAction,
         ...(actionType === 'escalate' ? { notes: escalateNote } : {})
       });
 
@@ -87,11 +100,12 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
         setSelectedItem(null);
         setIsEscalating(false);
         setEscalateNote('');
+        setConfirmLiveAction(false);
         void fetchQueue();
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      triggerToast(err.message || 'Error resolving queue item', 'error');
+      triggerToast(err instanceof Error ? err.message : 'Error resolving queue item', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -415,29 +429,43 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
               </div>
             ) : (
               /* Core Action Buttons */
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '14px', marginTop: 'auto', flexWrap: 'wrap', gap: '10px' }}>
-                <button
-                  onClick={() => handleAction('escalate')}
-                  className="glass-btn"
-                  style={{ color: 'var(--accent-gold)', borderColor: 'var(--accent-border-pill)', minWidth: '150px', fontWeight: 600 }}
-                >
-                  ⚖️ ESCALATE CASE
-                </button>
-                <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'grid', gap: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '14px', marginTop: 'auto' }}>
+                {selectedItem.itemId.startsWith('live:') && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--muted)', fontSize: '12px', fontWeight: 800 }}>
+                    <input
+                      type="checkbox"
+                      checked={confirmLiveAction}
+                      onChange={(event) => setConfirmLiveAction(event.target.checked)}
+                    />
+                    Confirm this approve/remove action will change live Reddit content.
+                  </label>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                   <button
-                    onClick={() => handleAction('remove')}
-                    className="glass-btn danger"
-                    style={{ minWidth: '140px' }}
+                    onClick={() => handleAction('escalate')}
+                    className="glass-btn"
+                    style={{ color: 'var(--accent-gold)', borderColor: 'var(--accent-border-pill)', minWidth: '150px', fontWeight: 600 }}
                   >
-                    ⛔ REMOVE CONTENT
+                    Escalate case
                   </button>
-                  <button
-                    onClick={() => handleAction('approve')}
-                    className="glass-btn success"
-                    style={{ minWidth: '140px', fontWeight: 600 }}
-                  >
-                    🟢 APPROVE CONTENT
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={() => handleAction('remove')}
+                      className="glass-btn danger"
+                      style={{ minWidth: '140px' }}
+                      disabled={selectedItem.itemId.startsWith('live:') && !confirmLiveAction}
+                    >
+                      Remove content
+                    </button>
+                    <button
+                      onClick={() => handleAction('approve')}
+                      className="glass-btn success"
+                      style={{ minWidth: '140px', fontWeight: 600 }}
+                      disabled={selectedItem.itemId.startsWith('live:') && !confirmLiveAction}
+                    >
+                      Approve content
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

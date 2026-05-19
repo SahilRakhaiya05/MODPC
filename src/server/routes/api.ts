@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
@@ -8,11 +9,13 @@ import type {
   ConsensusVote,
   CreateTicketRequest,
   DashboardResponse,
+  LiveInsightResponse,
   ModeratorProfile,
   QueueActionRequest,
   QueueItem,
   ResponseTemplate,
   SaveTemplateRequest,
+  SessionResponse,
   Severity,
   SubmitAttemptRequest,
   SubmitAttemptResponse,
@@ -32,6 +35,33 @@ const key = (name: string) => `${NS}:${context.subredditName ?? 'testsubreddit'}
 const now = () => new Date().toISOString();
 const id = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+type ModContextState = {
+  username: string | null;
+  subredditName: string;
+  isModerator: boolean;
+  redisStatus: 'ok' | 'degraded';
+};
+
+type RedditThingId = `t1_${string}` | `t3_${string}`;
+
+class AuthError extends Error {
+  constructor(
+    public readonly code: NonNullable<ApiError['code']>,
+    message: string,
+    public readonly statusCode: 401 | 403 | 503 = 403
+  ) {
+    super(message);
+  }
+}
+
+api.onError((error, c) => {
+  if (error instanceof AuthError) {
+    return c.json<ApiError>({ status: 'error', code: error.code, message: error.message }, error.statusCode);
+  }
+  console.error('Unhandled ModDesk API error', error);
+  return c.json<ApiError>({ status: 'error', code: 'REDDIT_API_UNAVAILABLE', message: 'ModDesk API request failed.' }, 500);
+});
 
 const json = {
   async get<T>(redisKey: string): Promise<T | undefined> {
@@ -449,13 +479,49 @@ function levelFromXp(xp: number): number {
   return level;
 }
 
-async function getModContext() {
-  const username = (await reddit.getCurrentUsername()) ?? 'anonymous';
+function asRedditThingId(idValue: string): RedditThingId | undefined {
+  if (idValue.startsWith('t1_') || idValue.startsWith('t3_')) return idValue as RedditThingId;
+  return undefined;
+}
+
+function baseCapabilities(isModerator: boolean): SessionResponse['capabilities'] {
+  const locked = {
+    enabled: false,
+    live: false,
+    reason: 'NOT_MODERATOR' as const,
+    detail: 'Install and open ModDesk as a moderator of this community.',
+  };
+  if (!isModerator) {
+    return {
+      queue: locked,
+      modmail: locked,
+      automod: locked,
+      modlog: locked,
+      users: locked,
+      flairs: locked,
+      insights: locked,
+    };
+  }
+  return {
+    queue: { enabled: true, live: true },
+    modmail: { enabled: true, live: true },
+    automod: { enabled: true, live: true },
+    modlog: { enabled: true, live: true },
+    users: { enabled: true, live: true },
+    flairs: { enabled: true, live: true },
+    insights: { enabled: true, live: false, detail: 'Uses live mod activity plus Redis-derived workspace telemetry.' },
+  };
+}
+
+async function getModContext(): Promise<ModContextState> {
+  const username = (await reddit.getCurrentUsername()) ?? null;
   const subredditName = context.subredditName ?? 'testsubreddit';
-  let isModerator: boolean;
+  let isModerator = false;
   try {
-    const mods = await reddit.getModerators({ subredditName, limit: 100 }).all();
-    isModerator = mods.some((mod) => mod.username.toLowerCase() === username.toLowerCase());
+    if (username) {
+      const mods = await reddit.getModerators({ subredditName, limit: 100 }).all();
+      isModerator = mods.some((mod) => mod.username.toLowerCase() === username.toLowerCase());
+    }
   } catch {
     isModerator = false;
   }
@@ -467,12 +533,46 @@ async function getModContext() {
   };
 }
 
-async function requireModerator(): Promise<ReturnType<typeof getModContext> extends Promise<infer T> ? T : never> {
+async function getSession(): Promise<SessionResponse> {
   const modContext = await getModContext();
-  if (!modContext.isModerator) {
-    throw new Error('Moderator access required for ModDesk OS.');
+  const errors: SessionResponse['errors'] = [];
+  if (!modContext.username) {
+    errors.push({ code: 'NOT_LOGGED_IN', message: 'Reddit did not provide a logged-in user for this Devvit session.' });
   }
-  return modContext;
+  if (!modContext.isModerator) {
+    errors.push({
+      code: 'NOT_MODERATOR',
+      message: `u/${modContext.username ?? 'unknown'} is not listed as a moderator of r/${modContext.subredditName}.`,
+    });
+  }
+  return {
+    username: modContext.username,
+    subredditName: modContext.subredditName,
+    isModerator: modContext.isModerator,
+    errors,
+    capabilities: baseCapabilities(modContext.isModerator),
+  };
+}
+
+async function requireModerator(): Promise<ModContextState & { username: string }> {
+  const modContext = await getModContext();
+  if (!modContext.username) {
+    throw new AuthError('NOT_LOGGED_IN', 'Open ModDesk from a logged-in Reddit account.', 401);
+  }
+  if (!modContext.isModerator) {
+    throw new AuthError('NOT_MODERATOR', 'Moderator access required for ModDesk OS.', 403);
+  }
+  return { ...modContext, username: modContext.username };
+}
+
+function requireLiveConfirmation(confirmation: string | undefined): void {
+  if (confirmation !== 'CONFIRM_LIVE_ACTION') {
+    throw new AuthError(
+      'MISSING_PERMISSION',
+      'Live destructive Reddit actions require explicit confirmation.',
+      403
+    );
+  }
 }
 
 async function getIndex(indexName: string): Promise<string[]> {
@@ -592,11 +692,12 @@ api.get('/health', async (c) => {
   return c.json({ status: 'ok', app: 'ModDesk OS', context: modContext }, 200);
 });
 
+api.get('/session', async (c) => {
+  return c.json(await getSession());
+});
+
 api.get('/dashboard', async (c) => {
-  const modContext = await getModContext();
-  if (!modContext.isModerator) {
-    return c.json<Pick<DashboardResponse, 'context'>>({ context: modContext }, 403);
-  }
+  const modContext = await requireModerator();
   await seedIfNeeded(modContext.username, modContext.subredditName);
   const [settings, profile, scenarios, tickets, templates, queue, auditEvents] = await Promise.all([
     getSettings(modContext.subredditName),
@@ -921,27 +1022,32 @@ api.post('/queue/action', async (c) => {
 
   if (input.itemId.startsWith('live:')) {
     const realId = input.itemId.replace('live:', '');
+    const thingId = asRedditThingId(realId);
     try {
       if (input.action === 'approve') {
-        await reddit.approve(realId);
+        requireLiveConfirmation(input.confirmation);
+        if (!thingId) throw new AuthError('REDDIT_API_UNAVAILABLE', 'Live queue item ID is not a supported post/comment ID.', 503);
+        await reddit.approve(thingId);
         await audit(modContext.username, {
           eventType: 'live.approved',
-          entityType: 'comment_or_post',
+          entityType: thingId.startsWith('t1_') ? 'comment' : 'post',
           entityId: realId,
           summary: `Approved live item ${realId} on r/${modContext.subredditName}`,
         });
       } else if (input.action === 'remove') {
-        await reddit.remove(realId, false);
+        requireLiveConfirmation(input.confirmation);
+        if (!thingId) throw new AuthError('REDDIT_API_UNAVAILABLE', 'Live queue item ID is not a supported post/comment ID.', 503);
+        await reddit.remove(thingId, false);
         await audit(modContext.username, {
           eventType: 'live.removed',
-          entityType: 'comment_or_post',
+          entityType: thingId.startsWith('t1_') ? 'comment' : 'post',
           entityId: realId,
           summary: `Removed live item ${realId} on r/${modContext.subredditName}`,
         });
       } else if (input.action === 'escalate') {
         const ticketInput: CreateTicketRequest = {
           actionType: 'Queue escalation',
-          targetType: 'comment_or_post',
+          targetType: thingId?.startsWith('t1_') ? 'comment' : 'post',
           targetId: input.itemId,
           targetDisplay: `Live Item: ${realId}`,
           reason: `Live item escalated: ${input.note || 'None'}`,
@@ -970,7 +1076,7 @@ api.post('/queue/action', async (c) => {
         await putIndexed('tickets', 'ticket', ticket.ticketId, ticket);
         await audit(modContext.username, {
           eventType: 'live.escalated',
-          entityType: 'comment_or_post',
+          entityType: thingId?.startsWith('t1_') ? 'comment' : 'post',
           entityId: realId,
           summary: `Escalated live item ${realId} to Governance Desk.`,
         });
@@ -1003,9 +1109,11 @@ api.post('/queue/action', async (c) => {
         outcome: input.action,
         note: input.note
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (err instanceof AuthError) throw err;
       console.error('Failed live action', err);
-      return c.json<ApiError>({ status: 'error', message: err.message || 'Live action failed' }, 500);
+      const message = err instanceof Error ? err.message : 'Live action failed';
+      return c.json<ApiError>({ status: 'error', code: 'REDDIT_API_UNAVAILABLE', message }, 500);
     }
   }
 
@@ -1080,10 +1188,7 @@ api.post('/queue/action', async (c) => {
 api.get('/wiki/automod', async (c) => {
   const modContext = await requireModerator();
   try {
-    const wikiPage = await reddit.getWikiPage({
-      subredditName: modContext.subredditName,
-      page: 'config/automod'
-    });
+    const wikiPage = await reddit.getWikiPage(modContext.subredditName, 'config/automod');
     return c.json({ content: wikiPage.content });
   } catch (err) {
     const defaultAutomod = `
@@ -1149,10 +1254,10 @@ api.get('/live/modlog', async (c) => {
       logs: logListing.map(log => ({
         eventId: log.id,
         actor: log.moderatorName || 'unknown_mod',
-        eventType: log.action || 'moderation',
-        entityType: log.targetKind || 'item',
-        entityId: log.targetId || '',
-        summary: `${log.details || log.action} on ${log.targetTitle || log.targetAuthor || 'item'}`,
+        eventType: log.type || 'moderation',
+        entityType: log.target?.id?.startsWith('t1_') ? 'comment' : log.target?.id?.startsWith('t3_') ? 'post' : 'item',
+        entityId: log.target?.id || '',
+        summary: `${log.details || log.description || log.type} on ${log.target?.title || log.target?.author || 'item'}`,
         createdAt: log.createdAt ? log.createdAt.toISOString() : now(),
       }))
     });
@@ -1173,11 +1278,10 @@ api.get('/live/rules', async (c) => {
     const subreddit = await reddit.getSubredditByName(modContext.subredditName);
     const rules = await subreddit.getRules();
     return c.json({
-      rules: rules.rules.map(r => ({
-        id: r.id || r.shortName,
+      rules: rules.map((r) => ({
+        id: r.shortName,
         shortName: r.shortName,
         description: r.description || '',
-        createdUtc: r.createdUtc,
         kind: r.kind,
       }))
     });
@@ -1205,7 +1309,7 @@ api.get('/live/users', async (c) => {
       return c.json({
         users: mods.map(m => ({
           username: m.username,
-          role: m.relation || 'Moderator',
+          role: 'Moderator',
           date: now()
         }))
       });
@@ -1261,17 +1365,19 @@ api.get('/live/users', async (c) => {
 
 api.post('/live/users/action', async (c) => {
   const modContext = await requireModerator();
-  const { type, username, action, duration, reason, note } = await c.req.json<{
+  const { type, username, action, duration, reason, note, confirmation } = await c.req.json<{
     type: 'banned' | 'muted' | 'approved';
     username: string;
     action: 'add' | 'remove';
     duration?: number;
     reason?: string;
     note?: string;
+    confirmation?: 'CONFIRM_LIVE_ACTION';
   }>();
 
   const subredditName = modContext.subredditName;
   try {
+    requireLiveConfirmation(confirmation);
     if (type === 'banned') {
       if (action === 'add') {
         await reddit.banUser({
@@ -1280,7 +1386,7 @@ api.post('/live/users/action', async (c) => {
           duration: duration || 0,
           reason: reason || 'Banned via ModyOS',
           note: note || 'Banned via ModyOS Control panel',
-          banMessage: `You have been banned from r/${subredditName}. Reason: ${reason || 'Rule violation'}`
+          message: `You have been banned from r/${subredditName}. Reason: ${reason || 'Rule violation'}`
         });
         await audit(modContext.username, {
           eventType: 'user.banned',
@@ -1321,10 +1427,7 @@ api.post('/live/users/action', async (c) => {
       }
     } else if (type === 'approved') {
       if (action === 'add') {
-        await reddit.approveUser({
-          subredditName,
-          username
-        });
+        await reddit.approveUser(username, subredditName);
         await audit(modContext.username, {
           eventType: 'user.approved',
           entityType: 'user',
@@ -1332,10 +1435,7 @@ api.post('/live/users/action', async (c) => {
           summary: `Added u/${username} to approved users list`,
         });
       } else {
-        await reddit.removeApprovedUser({
-          subredditName,
-          username
-        });
+        await reddit.removeUser(username, subredditName);
         await audit(modContext.username, {
           eventType: 'user.unapproved',
           entityType: 'user',
@@ -1345,9 +1445,10 @@ api.post('/live/users/action', async (c) => {
       }
     }
     return c.json({ success: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    if (err instanceof AuthError) throw err;
     console.error(`Failed live user action: ${type} ${action}`, err);
-    return c.json({ success: false, error: err.message || 'Operation failed.' }, 500);
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Operation failed.' }, 500);
   }
 });
 
@@ -1363,11 +1464,11 @@ api.get('/live/modmail', async (c) => {
     let conversations: any[] = [];
     try {
       const liveConvs = await reddit.modMail.getConversations({
-        subredditName,
+        subreddits: [subredditName],
         state: 'all',
         limit: 20
       });
-      conversations = liveConvs.conversations.map(conv => {
+      conversations = Object.values(liveConvs.conversations).map((conv) => {
         return {
           id: conv.id,
           subject: conv.subject || 'No Subject',
@@ -1375,12 +1476,12 @@ api.get('/live/modmail', async (c) => {
           userKarma: 1250,
           userAge: '1y 3m',
           userBanned: false,
-          folder: conv.isArchived ? 'archived' : 'inbox',
+          folder: conv.state === 'Archived' ? 'archived' : conv.state === 'InProgress' ? 'progress' : conv.isInternal ? 'discussion' : 'inbox',
           date: conv.lastUpdated || now(),
-          messages: conv.messages.map(m => ({
+          messages: Object.values(conv.messages).map((m) => ({
             id: m.id,
             author: m.author?.name || 'system',
-            body: m.bodyMarkdown || '',
+            body: m.bodyMarkdown || m.body || '',
             date: m.date || now(),
             isInternal: m.isInternal || false
           }))
@@ -1490,9 +1591,9 @@ api.post('/live/modmail/reply', async (c) => {
   try {
     if (!threadId.startsWith('demo-')) {
       try {
-        await reddit.modMail.createMessage({
+        await reddit.modMail.reply({
           conversationId: threadId,
-          bodyMarkdown: body,
+          body,
           isInternal: !!isInternal
         });
         return c.json({ success: true });
@@ -1600,15 +1701,15 @@ api.get('/live/flairs', async (c) => {
       const pfKey = key('flair:post');
       const ufKey = key('flair:user');
       postFlairs = await json.get<any[]>(pfKey) || [
-        { id: 'pf-1', text: 'Discussion 💬', backgroundColor: '#3b82f6', textColor: 'light', modOnly: false },
-        { id: 'pf-2', text: 'Megathread 🔥', backgroundColor: '#f97316', textColor: 'light', modOnly: true },
-        { id: 'pf-3', text: 'Gaming AMA 🎮', backgroundColor: '#10b981', textColor: 'light', modOnly: false },
-        { id: 'pf-4', text: 'Question / Help ❓', backgroundColor: '#ef4444', textColor: 'light', modOnly: false }
+        { id: 'pf-1', text: 'Discussion', backgroundColor: '#3b82f6', textColor: 'light', modOnly: false },
+        { id: 'pf-2', text: 'Megathread', backgroundColor: '#f97316', textColor: 'light', modOnly: true },
+        { id: 'pf-3', text: 'Gaming AMA', backgroundColor: '#10b981', textColor: 'light', modOnly: false },
+        { id: 'pf-4', text: 'Question / Help', backgroundColor: '#ef4444', textColor: 'light', modOnly: false }
       ];
       userFlairs = await json.get<any[]>(ufKey) || [
-        { id: 'uf-1', text: 'Retro Veteran 🏆', backgroundColor: '#d97706', textColor: 'light', modOnly: false },
-        { id: 'uf-2', text: 'Mod Squad 🛡️', backgroundColor: '#8b5cf6', textColor: 'light', modOnly: true },
-        { id: 'uf-3', text: 'Casual Gamer 🕹️', backgroundColor: '#6b7280', textColor: 'light', modOnly: false }
+        { id: 'uf-1', text: 'Retro Veteran', backgroundColor: '#d97706', textColor: 'light', modOnly: false },
+        { id: 'uf-2', text: 'Mod Squad', backgroundColor: '#8b5cf6', textColor: 'light', modOnly: true },
+        { id: 'uf-3', text: 'Casual Gamer', backgroundColor: '#6b7280', textColor: 'light', modOnly: false }
       ];
       await json.set(pfKey, postFlairs);
       await json.set(ufKey, userFlairs);
@@ -1671,43 +1772,102 @@ api.post('/live/flairs/action', async (c) => {
 
 api.get('/live/insights', async (c) => {
   const modContext = await requireModerator();
-  
-  const mockInsights = {
-    activeUsers: 142,
-    subscribers: 28400,
-    growthRate: '+14.8%',
-    totalViewsToday: 4850,
-    peakHourLoad: '94%',
-    rulesViolated: [
-      { rule: 'Rule 1: Civility', count: 48, percentage: 40 },
-      { rule: 'Rule 3: Spam / Self-Promo', count: 36, percentage: 30 },
-      { rule: 'Rule 2: Stay on Topic', count: 24, percentage: 20 },
-      { rule: 'Rule 4: Duplicate', count: 12, percentage: 10 }
-    ],
-    growthStats: [
-      { label: 'Mon', views: 3200, growth: 10 },
-      { label: 'Tue', views: 3800, growth: 12 },
-      { label: 'Wed', views: 4100, growth: 8 },
-      { label: 'Thu', views: 4700, growth: 15 },
-      { label: 'Fri', views: 5600, growth: 20 },
-      { label: 'Sat', views: 6200, growth: 18 },
-      { label: 'Sun', views: 4850, growth: 14 }
-    ],
+
+  const [storedQueue, auditEvents] = await Promise.all([
+    listIndexed<QueueItem>('queue', 'queue'),
+    listIndexed<AuditEvent>('audit', 'audit'),
+  ]);
+
+  const liveQueue = await fetchLiveQueue(modContext.subredditName);
+  const combinedQueue = [
+    ...liveQueue,
+    ...storedQueue.filter((item) => !liveQueue.some((liveItem) => liveItem.itemId === item.itemId)),
+  ];
+  const activeQueue = combinedQueue.filter((item) => item.status === 'new' || item.status === 'reviewing');
+  const ruleCounts = new Map<string, number>();
+  for (const item of activeQueue) {
+    const rules = item.suggestedRuleIds.length ? item.suggestedRuleIds : ['Unmapped reports'];
+    for (const rule of rules) {
+      const label = rule.startsWith('rule-') ? ruleTitle(rule) : rule;
+      ruleCounts.set(label, (ruleCounts.get(label) ?? 0) + Math.max(1, item.reportCount));
+    }
+  }
+  const totalRulePressure = Math.max(1, Array.from(ruleCounts.values()).reduce((sum, count) => sum + count, 0));
+  const rulesViolated = Array.from(ruleCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([rule, count]) => ({
+      rule,
+      count,
+      percentage: Math.round((count / totalRulePressure) * 100),
+    }));
+
+  let modmailOpen: number | null = null;
+  let automodState: LiveInsightResponse['automodState'] = 'unavailable';
+  let liveModlogCount = 0;
+  const telemetryLogs: LiveInsightResponse['telemetryLogs'] = [];
+
+  try {
+    const conversations = await reddit.modMail.getConversations({
+      subreddits: [modContext.subredditName],
+      state: 'all',
+      limit: 30,
+    });
+    modmailOpen = Object.values(conversations.conversations).filter((conversation) => conversation.state !== 'Archived').length;
+    telemetryLogs.push({ timestamp: now(), message: `Modmail returned ${modmailOpen} open conversations for r/${modContext.subredditName}.` });
+  } catch (error) {
+    console.warn('Modmail insights unavailable', error);
+    telemetryLogs.push({ timestamp: now(), message: 'Modmail capability unavailable for this install or permission set.' });
+  }
+
+  try {
+    const page = await reddit.getWikiPage(modContext.subredditName, 'config/automod');
+    const content = page.content;
+    automodState = content.trim().length > 0 ? 'live' : 'empty';
+    telemetryLogs.push({ timestamp: now(), message: `Automod wiki is ${automodState}.` });
+  } catch (error) {
+    console.warn('Automod insights unavailable', error);
+    telemetryLogs.push({ timestamp: now(), message: 'Automod wiki could not be read by this Devvit session.' });
+  }
+
+  try {
+    const logs = await reddit.getModerationLog({
+      subredditName: modContext.subredditName,
+      limit: 30,
+    }).all();
+    liveModlogCount = logs.length;
+    telemetryLogs.push({ timestamp: now(), message: `Modlog returned ${liveModlogCount} recent events.` });
+  } catch (error) {
+    console.warn('Modlog insights unavailable', error);
+    telemetryLogs.push({ timestamp: now(), message: 'Modlog capability unavailable for this install or permission set.' });
+  }
+
+  const byHour = new Map<string, number>();
+  for (const event of auditEvents.slice(0, 80)) {
+    const label = new Date(event.createdAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' });
+    byHour.set(label, (byHour.get(label) ?? 0) + 1);
+  }
+  const activityStats = Array.from(byHour.entries())
+    .slice(0, 7)
+    .map(([label, count]) => ({ label, count }));
+
+  const response: LiveInsightResponse = {
+    source: liveQueue.length > 0 || liveModlogCount > 0 || modmailOpen !== null ? 'live' : 'derived',
+    generatedAt: now(),
+    queueOpen: activeQueue.length,
+    queueCritical: activeQueue.filter((item) => item.severity === 'critical').length,
+    modmailOpen,
+    modlogEvents: liveModlogCount,
+    auditEvents: auditEvents.length,
+    automodState,
+    rulesViolated,
+    activityStats,
     telemetryLogs: [
-      { timestamp: new Date(Date.now() - 5000).toISOString(), message: 'API_GATEWAY: Received dispatch [POST /live/queue/action]' },
-      { timestamp: new Date(Date.now() - 12000).toISOString(), message: 'SYS_CORE: Synchronizing collaborative Redis indexes...' },
-      { timestamp: new Date(Date.now() - 25000).toISOString(), message: 'MODMAIL_DISPATCH: Fetched active inbox packets [200 OK]' },
-      { timestamp: new Date(Date.now() - 40000).toISOString(), message: 'SECURITY_GRID: Bounded client sandbox integrity verified.' },
-      { timestamp: new Date(Date.now() - 60000).toISOString(), message: 'AUTODEP: Synced Wiki config/automod file to Reddit CDN.' }
+      { timestamp: now(), message: `Queue pressure derived from ${activeQueue.length} open queue items.` },
+      ...telemetryLogs,
+      ...auditEvents.slice(0, 4).map((event) => ({ timestamp: event.createdAt, message: `${event.actor}: ${event.summary}` })),
     ],
-    leaderboard: [
-      { username: 'ModAlpha', actions: 243, accuracy: '98%', streak: 12 },
-      { username: 'ModBeta', actions: 184, accuracy: '96%', streak: 8 },
-      { username: modContext.username, actions: 125, accuracy: '100%', streak: 5 },
-      { username: 'ModGamma', actions: 98, accuracy: '92%', streak: 2 }
-    ]
   };
 
-  return c.json(mockInsights);
+  return c.json<LiveInsightResponse>(response);
 });
-

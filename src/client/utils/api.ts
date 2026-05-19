@@ -3,7 +3,25 @@ import {
   SystemStatus, AppSettings, ModeratorProfile, TrainingScenario, 
   TrainingAttempt, ConsensusTicket, ResponseTemplate, QueueItem, AuditEvent 
 } from '../types';
-import type { DashboardResponse, SubmitAttemptResponse, TicketDetailResponse } from '../../shared/api';
+import type { DashboardResponse, LiveInsightResponse, SessionResponse, SubmitAttemptResponse, TicketDetailResponse } from '../../shared/api';
+
+export type LiveModmailThread = {
+  id: string;
+  subject: string;
+  user: string;
+  userKarma: number;
+  userAge: string;
+  userBanned: boolean;
+  folder: 'inbox' | 'progress' | 'archived' | 'discussion';
+  date: string;
+  messages: Array<{
+    id: string;
+    author: string;
+    body: string;
+    date: string;
+    isInternal: boolean;
+  }>;
+};
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -18,6 +36,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  async getSession(): Promise<SessionResponse> {
+    return await apiFetch<SessionResponse>('/session');
+  },
+
   async getStatus(): Promise<SystemStatus> {
     const data = await apiFetch<DashboardResponse>('/dashboard');
     
@@ -464,6 +486,7 @@ export const api = {
     itemId: string;
     actionType: string;
     notes?: string;
+    confirmation?: boolean;
   }): Promise<{ success: boolean; queue: QueueItem[]; moderatorProfile: ModeratorProfile }> {
     await apiFetch<any>('/queue/action', {
       method: 'POST',
@@ -471,6 +494,7 @@ export const api = {
         itemId: payload.itemId,
         action: payload.actionType,
         note: payload.notes || '',
+        confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined,
       }),
     });
 
@@ -519,15 +543,16 @@ export const api = {
     duration?: number;
     reason?: string;
     note?: string;
+    confirmation?: boolean;
   }): Promise<{ success: boolean }> {
     return await apiFetch<{ success: boolean }>('/live/users/action', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
   },
 
-  async getLiveModmail(): Promise<{ conversations: any[] }> {
-    return await apiFetch<{ conversations: any[] }>('/live/modmail');
+  async getLiveModmail(): Promise<{ conversations: LiveModmailThread[] }> {
+    return await apiFetch<{ conversations: LiveModmailThread[] }>('/live/modmail');
   },
 
   async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean }): Promise<{ success: boolean; thread?: any }> {
@@ -555,7 +580,7 @@ export const api = {
     });
   },
 
-  async getLiveInsights(): Promise<any> {
-    return await apiFetch<any>('/live/insights');
+  async getLiveInsights(): Promise<LiveInsightResponse> {
+    return await apiFetch<LiveInsightResponse>('/live/insights');
   }
 };

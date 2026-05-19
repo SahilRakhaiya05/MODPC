@@ -6,10 +6,12 @@ import { StrictMode, useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BootScreen } from './components/BootScreen';
 import { DesktopShell } from './components/DesktopShell';
+import { AccessGate } from './components/AccessGate';
 import { SystemToast } from './components/SystemToast';
 import { RetroWindow } from './components/RetroWindow';
 import { api } from './utils/api';
 import type { SystemStatus } from './types';
+import type { SessionResponse } from '../shared/api';
 
 type Toast = {
   id: string;
@@ -86,8 +88,25 @@ const createPreviewStatus = (): SystemStatus => ({
   ],
 });
 
+const createPreviewSession = (): SessionResponse => ({
+  username: 'preview_mod',
+  subredditName: 'ProductMods',
+  isModerator: true,
+  errors: [],
+  capabilities: {
+    queue: { enabled: true, live: false, detail: 'Local preview data' },
+    modmail: { enabled: true, live: false, detail: 'Local preview data' },
+    automod: { enabled: true, live: false, detail: 'Local preview data' },
+    modlog: { enabled: true, live: false, detail: 'Local preview data' },
+    users: { enabled: true, live: false, detail: 'Local preview data' },
+    flairs: { enabled: true, live: false, detail: 'Local preview data' },
+    insights: { enabled: true, live: false, detail: 'Local preview data' },
+  },
+});
+
 export function App() {
   const [data, setData] = useState<SystemStatus | null>(null);
+  const [session, setSession] = useState<SessionResponse | null>(null);
   const [booting, setBooting] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -98,10 +117,18 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
+      const sessionData = await api.getSession();
+      setSession(sessionData);
+      if (!sessionData.isModerator) {
+        setData(null);
+        setBooting(false);
+        return;
+      }
       const statusData = await api.getStatus();
       setData(statusData);
     } catch (err) {
       if (import.meta.env.DEV) {
+        setSession(createPreviewSession());
         setData(createPreviewStatus());
         return;
       }
@@ -117,6 +144,7 @@ export function App() {
       setData(statusData);
     } catch (err) {
       if (import.meta.env.DEV) {
+        setSession(createPreviewSession());
         setData(createPreviewStatus());
         return;
       }
@@ -178,6 +206,10 @@ export function App() {
     );
   }
 
+  if (session && !session.isModerator) {
+    return <AccessGate session={session} />;
+  }
+
   if (!data) {
     return (
       <div style={{
@@ -226,11 +258,13 @@ export function App() {
 
   return (
     <>
-      <DesktopShell
-        statusData={data}
-        triggerToast={addToast}
-        onReset={handleReset}
-      />
+      <AccessGate session={session ?? createPreviewSession()}>
+        <DesktopShell
+          statusData={data}
+          triggerToast={addToast}
+          onReset={handleReset}
+        />
+      </AccessGate>
       <div style={{
         position: 'fixed',
         bottom: '24px',

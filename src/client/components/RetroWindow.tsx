@@ -17,6 +17,16 @@ interface RetroWindowProps {
   onMaximize?: () => void;
 }
 
+type WindowSize = {
+  width: number;
+  height: number;
+};
+
+const parseCssSize = (value: string, fallback: number) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 export const RetroWindow: React.FC<RetroWindowProps> = ({
   id,
   title,
@@ -37,8 +47,14 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
     y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
   }));
+  const [size, setSize] = useState<WindowSize>(() => ({
+    width: parseCssSize(defaultSize.width, 720),
+    height: parseCssSize(defaultSize.height, 520),
+  }));
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
+  const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -58,6 +74,20 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     e.preventDefault();
   };
 
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || isMaximized) return;
+    onFocus();
+    setIsResizing(true);
+    resizeStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: size.width,
+      height: size.height,
+    };
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
@@ -66,9 +96,11 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       let newX = e.clientX - dragStart.current.x;
       let newY = e.clientY - dragStart.current.y;
       
-      // Ensure window stays mostly on screen
-      newX = Math.max(-100, Math.min(window.innerWidth - 100, newX));
-      newY = Math.max(0, Math.min(window.innerHeight - 50, newY));
+      // Keep the titlebar reachable and most of the window inside the viewport.
+      const maxX = Math.max(0, window.innerWidth - Math.min(180, size.width));
+      const maxY = Math.max(0, window.innerHeight - 80);
+      newX = Math.max(-Math.min(80, size.width - 160), Math.min(maxX, newX));
+      newY = Math.max(44, Math.min(maxY, newY));
 
       setPosition({ x: newX, y: newY });
     };
@@ -88,7 +120,50 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, size.width]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const nextWidth = resizeStart.current.width + e.clientX - resizeStart.current.x;
+      const nextHeight = resizeStart.current.height + e.clientY - resizeStart.current.y;
+      const maxWidth = Math.max(320, window.innerWidth - position.x - 12);
+      const maxHeight = Math.max(300, window.innerHeight - position.y - 58);
+      setSize({
+        width: Math.max(320, Math.min(maxWidth, nextWidth)),
+        height: Math.max(300, Math.min(maxHeight, nextHeight)),
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, position.x, position.y]);
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      setPosition((current) => ({
+        x: Math.max(0, Math.min(current.x, window.innerWidth - 180)),
+        y: Math.max(44, Math.min(current.y, window.innerHeight - 80)),
+      }));
+      setSize((current) => ({
+        width: Math.max(320, Math.min(current.width, window.innerWidth - 24)),
+        height: Math.max(300, Math.min(current.height, window.innerHeight - 98)),
+      }));
+    };
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -98,8 +173,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       onMouseDown={onFocus}
       className={`glass-window glass-panel ${isActive ? 'active' : ''}`}
       style={{
-        width: isMaximized ? '100vw' : defaultSize.width,
-        height: isMaximized ? 'calc(100vh - 40px - 90px)' : defaultSize.height,
+        width: isMaximized ? '100vw' : `${size.width}px`,
+        height: isMaximized ? 'calc(100vh - 100px)' : `${size.height}px`,
         left: isMaximized ? '0px' : `${position.x}px`,
         top: isMaximized ? '40px' : `${position.y}px`,
         zIndex: isActive ? 100 : 20,
@@ -111,6 +186,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         opacity: isMinimized ? 0 : 1,
         transform: isMinimized ? 'scale(0.8) translateY(100px)' : 'scale(1) translateY(0)',
         pointerEvents: isMinimized ? 'none' : 'auto',
+        minWidth: '320px',
+        minHeight: '300px',
       }}
     >
       {/* Title bar / Header (translucent) */}
@@ -197,6 +274,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         </span>
         <span style={{ opacity: 0.8 }}>SYS_CORE.ACTIVE // TRU</span>
       </div>
+      {!isMaximized && <button className="window-resize-handle" onMouseDown={handleResizeMouseDown} aria-label="Resize window" />}
     </div>
   );
 };

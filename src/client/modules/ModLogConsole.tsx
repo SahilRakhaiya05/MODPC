@@ -1,11 +1,12 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
-interface ModLogConsoleProps {
+type ModLogConsoleProps = {
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
-}
+};
 
-interface ModLogEvent {
+type ModLogEvent = {
   eventId: string;
   actor: string;
   eventType: string;
@@ -13,7 +14,7 @@ interface ModLogEvent {
   entityId: string;
   summary: string;
   createdAt: string;
-}
+};
 
 export const ModLogConsole: React.FC<ModLogConsoleProps> = ({ triggerToast }) => {
   const [logs, setLogs] = useState<ModLogEvent[]>([]);
@@ -28,8 +29,8 @@ export const ModLogConsole: React.FC<ModLogConsoleProps> = ({ triggerToast }) =>
       const res = await api.getLiveModlog();
       setLogs(res.logs);
       triggerToast('Moderation action logs synced successfully.', 'success');
-    } catch (err: any) {
-      triggerToast(err.message || 'Failed to fetch live moderation logs.', 'error');
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : 'Failed to fetch live moderation logs.', 'error');
     } finally {
       setLoading(false);
     }

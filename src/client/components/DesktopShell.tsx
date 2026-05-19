@@ -1,25 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { AppSettings, AuditEvent, ModeratorProfile, SystemStatus } from '../types';
+import type { AppSettings, AuditEvent, ModeratorProfile, QueueItem, SystemStatus } from '../types';
 import { api } from '../utils/api';
 import { RetroWindow } from './RetroWindow';
-import { ModAcademy } from '../modules/ModAcademy';
-import { ConsensusDesk } from '../modules/ConsensusDesk';
-import { Typewriter } from '../modules/Typewriter';
 import { QueueConsole } from '../modules/QueueConsole';
-import { SettingsPanel } from '../modules/SettingsPanel';
+import { ModmailHub } from '../modules/ModmailHub';
 import { AutomodPanel } from '../modules/AutomodPanel';
+import { InsightsPanel } from '../modules/InsightsPanel';
+import { Typewriter } from '../modules/Typewriter';
 import { ModLogConsole } from '../modules/ModLogConsole';
 import { UserControlRegistry } from '../modules/UserControlRegistry';
+import { SettingsPanel } from '../modules/SettingsPanel';
+import { ConsensusDesk } from '../modules/ConsensusDesk';
+import { ModAcademy } from '../modules/ModAcademy';
 
 type WindowId =
-  | 'academy'
-  | 'consensus'
-  | 'typewriter'
   | 'queue'
-  | 'settings'
+  | 'modmail'
   | 'automod'
+  | 'insights'
+  | 'typewriter'
   | 'modlog'
-  | 'usergrid';
+  | 'usergrid'
+  | 'settings'
+  | 'consensus'
+  | 'academy';
 
 type WindowInfo = {
   isOpen: boolean;
@@ -32,124 +36,194 @@ type WindowInfo = {
   position: { x: number; y: number };
 };
 
-type WindowState = Record<WindowId, WindowInfo>;
-
 type DesktopShellProps = {
   statusData: SystemStatus;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
   onReset: () => void;
 };
 
-const moduleMeta: Array<{
-  id: WindowId;
-  eyebrow: string;
-  title: string;
-  copy: string;
-  metric: string;
-  trend: string;
-  tone: string;
-}> = [
+type ModuleId = Exclude<WindowId, 'consensus' | 'academy'>;
+
+type ProductModule = {
+  id: ModuleId;
+  file: string;
+  label: string;
+  description: string;
+  icon: string;
+  category: 'Overview' | 'Moderation' | 'Content' | 'Community Apps' | 'Settings' | 'Support';
+  aliases: string[];
+};
+
+type HomeStats = {
+  queueOpen: number;
+  queueCritical: number;
+  modmailOpen: number;
+  modlogCount: number;
+  automodState: 'live' | 'empty' | 'unavailable';
+  latestQueue: QueueItem[];
+  loadedAt: string;
+};
+
+const makeWindow = (
+  title: string,
+  icon: string,
+  width: string,
+  height: string,
+  x: number,
+  y: number
+): WindowInfo => ({
+  isOpen: false,
+  isMinimized: false,
+  isMaximized: false,
+  title,
+  icon,
+  width,
+  height,
+  position: { x, y },
+});
+
+const initialWindows: Record<WindowId, WindowInfo> = {
+  queue: makeWindow('Needs Review', 'Q', '900px', '610px', 90, 72),
+  modmail: makeWindow('Mod Mail', 'MAIL', '1080px', '650px', 110, 82),
+  automod: makeWindow('Automod YAML', 'YAML', '860px', '620px', 132, 94),
+  insights: makeWindow('Insights Graph', 'GRAPH', '900px', '620px', 148, 104),
+  typewriter: makeWindow('Saved Responses', 'MD', '780px', '560px', 152, 110),
+  modlog: makeWindow('Modlog Feed', 'LOG', '860px', '580px', 166, 108),
+  usergrid: makeWindow('Users DB', 'DB', '900px', '620px', 118, 90),
+  settings: makeWindow('Settings System', 'SYS', '680px', '540px', 210, 126),
+  consensus: makeWindow('Consensus Desk', 'VOTE', '800px', '580px', 118, 96),
+  academy: makeWindow('Mod Academy', 'EDU', '780px', '560px', 84, 82),
+};
+
+const modules: ProductModule[] = [
   {
     id: 'queue',
-    eyebrow: 'Review loop',
-    title: 'Priority Queue',
-    copy: 'Rank reports by risk, age, and moderation confidence before taking action.',
-    metric: '12',
-    trend: '+4 urgent',
-    tone: 'orange',
+    file: 'queue.mdx',
+    label: 'Needs Review',
+    description: 'Reported posts and comments, severity, rules, approve/remove/escalate.',
+    icon: '/moddesk-icons/queue.png',
+    category: 'Moderation',
+    aliases: ['queue', 'reports', 'needs review', 'approve', 'remove'],
   },
   {
-    id: 'academy',
-    eyebrow: 'Training',
-    title: 'Mod Academy',
-    copy: 'Run realistic scenarios and build moderator judgment with feedback.',
-    metric: '86%',
-    trend: 'accuracy',
-    tone: 'green',
-  },
-  {
-    id: 'consensus',
-    eyebrow: 'Governance',
-    title: 'Consensus Desk',
-    copy: 'Collect votes for high-impact actions with a clean audit trail.',
-    metric: '3',
-    trend: 'open ballots',
-    tone: 'blue',
-  },
-  {
-    id: 'typewriter',
-    eyebrow: 'Templates',
-    title: 'Typewriter',
-    copy: 'Compose policy-safe replies and reusable moderator macros.',
-    metric: '18',
-    trend: 'macros',
-    tone: 'purple',
+    id: 'modmail',
+    file: 'modmail.app',
+    label: 'Mod Mail',
+    description: 'Read, reply, archive, and use saved moderator responses.',
+    icon: '/moddesk-icons/modmail.png',
+    category: 'Support',
+    aliases: ['mail', 'modmail', 'inbox', 'reply'],
   },
   {
     id: 'automod',
-    eyebrow: 'Policy engine',
-    title: 'AutoMod Rules',
-    copy: 'Prototype YAML rules and review rule intent before shipping.',
-    metric: '7',
-    trend: 'checks',
-    tone: 'red',
+    file: 'automod.yml',
+    label: 'Automod',
+    description: 'Read and save wiki/config/automoderator with audit trail.',
+    icon: '/moddesk-icons/automod.png',
+    category: 'Content',
+    aliases: ['automod', 'yaml', 'wiki', 'config'],
+  },
+  {
+    id: 'typewriter',
+    file: 'saved-responses.md',
+    label: 'Saved Responses',
+    description: 'Reusable removal, appeal, redirect, and education templates.',
+    icon: '/moddesk-icons/saved-responses.png',
+    category: 'Moderation',
+    aliases: ['responses', 'templates', 'saved'],
   },
   {
     id: 'modlog',
-    eyebrow: 'Auditability',
-    title: 'Mod Logs',
-    copy: 'Watch recent actions, state changes, and traceable moderation events.',
-    metric: '42',
-    trend: 'events',
-    tone: 'gray',
+    file: 'modlog.feed',
+    label: 'Mod Log',
+    description: 'Live moderation log plus ModDesk audit entries.',
+    icon: '/moddesk-icons/modlog.png',
+    category: 'Overview',
+    aliases: ['log', 'modlog', 'audit'],
   },
   {
     id: 'usergrid',
-    eyebrow: 'User ops',
-    title: 'User Registry',
-    copy: 'Review status, notes, history, and ban/mute context in one place.',
-    metric: '128',
-    trend: 'profiles',
-    tone: 'teal',
+    file: 'users.db',
+    label: 'Users',
+    description: 'Banned, muted, approved, and moderator registries.',
+    icon: '/moddesk-icons/users.png',
+    category: 'Community Apps',
+    aliases: ['users', 'ban', 'mute', 'approved', 'moderators'],
+  },
+  {
+    id: 'insights',
+    file: 'insights.graph',
+    label: 'Insights',
+    description: 'Derived queue pressure, modlog activity, and rule pressure.',
+    icon: '/moddesk-icons/insights.png',
+    category: 'Overview',
+    aliases: ['insights', 'graph', 'summary', 'pressure'],
   },
   {
     id: 'settings',
-    eyebrow: 'Workspace',
-    title: 'Control Panel',
-    copy: 'Tune thresholds, training requirements, and subreddit workspace settings.',
-    metric: '9',
-    trend: 'controls',
-    tone: 'yellow',
+    file: 'settings.sys',
+    label: 'Settings',
+    description: 'Subreddit-scoped configuration, mode, training, and reset controls.',
+    icon: '/moddesk-icons/settings.png',
+    category: 'Settings',
+    aliases: ['settings', 'system', 'config'],
   },
 ];
 
-const initialWindows: WindowState = {
-  academy: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Mod Academy', icon: 'EDU', width: '760px', height: '560px', position: { x: 84, y: 82 } },
-  consensus: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Consensus Desk', icon: 'VOTE', width: '780px', height: '560px', position: { x: 118, y: 96 } },
-  typewriter: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Typewriter Templates', icon: 'TXT', width: '760px', height: '560px', position: { x: 152, y: 110 } },
-  queue: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Priority Queue', icon: 'Q', width: '800px', height: '580px', position: { x: 96, y: 76 } },
-  settings: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Control Panel', icon: 'CFG', width: '660px', height: '520px', position: { x: 210, y: 126 } },
-  automod: { isOpen: false, isMinimized: false, isMaximized: false, title: 'AutoMod Rules', icon: 'YAML', width: '820px', height: '600px', position: { x: 132, y: 94 } },
-  modlog: { isOpen: false, isMinimized: false, isMaximized: false, title: 'Moderation Audit Stream', icon: 'LOG', width: '820px', height: '560px', position: { x: 166, y: 108 } },
-  usergrid: { isOpen: false, isMinimized: false, isMaximized: false, title: 'User Registry', icon: 'USR', width: '860px', height: '600px', position: { x: 118, y: 90 } },
-};
+const mainTabs: Array<{ id: WindowId; label: string }> = [
+  { id: 'queue', label: 'Needs Review' },
+  { id: 'modmail', label: 'Mod Mail' },
+  { id: 'automod', label: 'Automod' },
+  { id: 'insights', label: 'Insights' },
+  { id: 'typewriter', label: 'Saved Responses' },
+];
+
+const windowIds: WindowId[] = [
+  'queue',
+  'modmail',
+  'automod',
+  'insights',
+  'typewriter',
+  'modlog',
+  'usergrid',
+  'settings',
+  'consensus',
+  'academy',
+];
+
+const categories: Array<{ id: WindowId; label: ProductModule['category']; glyph: string }> = [
+  { id: 'insights', label: 'Overview', glyph: 'OVR' },
+  { id: 'queue', label: 'Moderation', glyph: 'MOD' },
+  { id: 'automod', label: 'Content', glyph: 'CNT' },
+  { id: 'usergrid', label: 'Community Apps', glyph: 'APP' },
+  { id: 'settings', label: 'Settings', glyph: 'SYS' },
+  { id: 'modmail', label: 'Support', glyph: 'SUP' },
+];
+
+const fallbackStats = (auditCount: number): HomeStats => ({
+  queueOpen: 0,
+  queueCritical: 0,
+  modmailOpen: 0,
+  modlogCount: auditCount,
+  automodState: 'unavailable',
+  latestQueue: [],
+  loadedAt: new Date().toISOString(),
+});
 
 export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerToast, onReset }) => {
   const [settings, setSettings] = useState<AppSettings>(statusData.settings);
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
   const [auditTicker, setAuditTicker] = useState<AuditEvent[]>(statusData.recentAudits ?? []);
-  const [mode, setMode] = useState<'demo' | 'live'>('demo');
-  const [windows, setWindows] = useState<WindowState>(initialWindows);
-  const [activeWindow, setActiveWindow] = useState<WindowId | 'audits' | ''>('');
+  const [homeStats, setHomeStats] = useState<HomeStats>(() => fallbackStats(statusData.recentAudits?.length ?? 0));
+  const [mode, setMode] = useState<'demo' | 'live'>('live');
+  const [windows, setWindows] = useState<Record<WindowId, WindowInfo>>({
+    ...initialWindows,
+    queue: { ...initialWindows.queue, isOpen: true },
+  });
+  const [activeWindow, setActiveWindow] = useState<WindowId | 'audits' | ''>('queue');
   const [auditsOpen, setAuditsOpen] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
-  const [copilotInput, setCopilotInput] = useState('');
-  const [messages, setMessages] = useState<Array<{ sender: 'ai' | 'user'; text: string }>>([
-    {
-      sender: 'ai',
-      text: 'Ask me for queue summaries, rule suggestions, or a calmer moderator reply. I will keep it short and actionable.',
-    },
-  ]);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandInput, setCommandInput] = useState('');
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -162,6 +236,42 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
   }, []);
 
   useEffect(() => {
+    const loadHomeStats = async () => {
+      const [queueResult, modmailResult, modlogResult, automodResult] = await Promise.allSettled([
+        api.getQueue(),
+        api.getLiveModmail(),
+        api.getLiveModlog(),
+        api.getAutomod(),
+      ]);
+
+      const queue = queueResult.status === 'fulfilled' ? queueResult.value.queue : [];
+      const activeQueue = queue.filter((item) => item.status === 'new' || item.status === 'reviewing');
+      const latestQueue = activeQueue.slice(0, 4);
+      const modmailOpen = modmailResult.status === 'fulfilled'
+        ? modmailResult.value.conversations.filter((thread) => thread.folder !== 'archived').length
+        : 0;
+      const modlogCount = modlogResult.status === 'fulfilled' ? modlogResult.value.logs.length : auditTicker.length;
+      const automodState = automodResult.status === 'fulfilled'
+        ? automodResult.value.content.trim().length > 0 ? 'live' : 'empty'
+        : 'unavailable';
+
+      setHomeStats({
+        queueOpen: activeQueue.length,
+        queueCritical: activeQueue.filter((item) => item.severity === 'critical').length,
+        modmailOpen,
+        modlogCount,
+        automodState,
+        latestQueue,
+        loadedAt: new Date().toISOString(),
+      });
+    };
+
+    void loadHomeStats();
+    const interval = window.setInterval(() => void loadHomeStats(), 15000);
+    return () => window.clearInterval(interval);
+  }, [auditTicker.length]);
+
+  useEffect(() => {
     const fetchAudits = async () => {
       try {
         const data = await api.getAudits();
@@ -170,351 +280,277 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
         console.error(err);
       }
     };
-
     void fetchAudits();
-    const interval = window.setInterval(() => {
-      void fetchAudits();
-    }, 8000);
+    const interval = window.setInterval(() => void fetchAudits(), 8000);
     return () => window.clearInterval(interval);
   }, []);
 
-  const accuracy = profile.totalScenarios > 0
-    ? Math.round((profile.correctScenarios / profile.totalScenarios) * 100)
-    : 0;
+  const dateLabel = useMemo(
+    () => now.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }),
+    [now]
+  );
+  const visibleAudits = auditTicker.slice(0, 5);
+  const subredditLabel = `r/${settings.subredditName}`;
 
-  const dateLabel = useMemo(() => {
-    return now.toLocaleString('en-US', {
-      weekday: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  }, [now]);
-
-  const openWindow = (id: WindowId) => {
-    setWindows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], isOpen: true, isMinimized: false },
-    }));
-    setActiveWindow(id);
+  const openWindow = (target: WindowId) => {
+    setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isOpen: true, isMinimized: false } }));
+    setActiveWindow(target);
   };
 
-  const closeWindow = (id: WindowId) => {
-    setWindows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], isOpen: false, isMaximized: false, isMinimized: false },
-    }));
-    setActiveWindow((current) => current === id ? '' : current);
+  const closeWindow = (target: WindowId) => {
+    setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isOpen: false, isMaximized: false, isMinimized: false } }));
+    setActiveWindow((current) => (current === target ? '' : current));
   };
 
-  const minimizeWindow = (id: WindowId) => {
-    setWindows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], isMinimized: true },
-    }));
-    setActiveWindow((current) => current === id ? '' : current);
+  const minimizeWindow = (target: WindowId) => {
+    setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isMinimized: true } }));
+    setActiveWindow((current) => (current === target ? '' : current));
   };
 
-  const toggleMinimize = (id: WindowId) => {
+  const toggleMinimize = (target: WindowId) => {
     setWindows((prev) => {
-      const win = prev[id];
-      const next = !win.isOpen
-        ? { ...win, isOpen: true, isMinimized: false }
-        : { ...win, isMinimized: !win.isMinimized };
-      return { ...prev, [id]: next };
+      const win = prev[target];
+      return { ...prev, [target]: win.isOpen ? { ...win, isMinimized: !win.isMinimized } : { ...win, isOpen: true, isMinimized: false } };
     });
-    setActiveWindow(id);
+    setActiveWindow(target);
   };
 
-  const maximizeWindow = (id: WindowId) => {
-    setWindows((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], isMaximized: !prev[id].isMaximized },
-    }));
-    setActiveWindow(id);
+  const maximizeWindow = (target: WindowId) => {
+    setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isMaximized: !prev[target].isMaximized } }));
+    setActiveWindow(target);
   };
 
-  const handleProfileUpdate = (updatedProfile: ModeratorProfile) => {
-    setProfile(updatedProfile);
-  };
-
-  const askCopilot = (text: string) => {
-    const query = text.trim();
+  const runCommand = (value: string) => {
+    const query = value.trim().toLowerCase();
     if (!query) return;
-
-    setMessages((prev) => [...prev, { sender: 'user', text: query }]);
-    setCopilotInput('');
-
-    const lower = query.toLowerCase();
-    let reply = 'Workspace looks healthy. Queue risk is concentrated in recent reported comments, so start with Priority Queue and escalate anything that affects multiple users.';
-    if (lower.includes('rule') || lower.includes('warning')) {
-      reply = 'Suggested action: cite the closest community rule, keep the first sentence human, and avoid over-explaining. Use Typewriter to draft and save the reusable version.';
+    const match = modules.find((module) =>
+      [module.label, module.file, module.category, ...module.aliases].some((candidate) => candidate.toLowerCase().includes(query))
+    );
+    if (match) {
+      openWindow(match.id);
+      setCommandOpen(false);
+      setCommandInput('');
+      return;
     }
-    if (lower.includes('queue') || lower.includes('summary')) {
-      reply = 'Queue summary: review high-report comments first, then check aging posts with repeated reports. Anything severe should move to Consensus Desk before a high-impact action.';
+    if (query.includes('audit') || query.includes('recent')) {
+      setAuditsOpen(true);
+      setCommandOpen(false);
+      setCommandInput('');
+      return;
     }
-    if (lower.includes('spam') || lower.includes('bot')) {
-      reply = 'Spam pattern: compare author age, repeated links, and report reasons. If the pattern repeats, create an AutoMod rule draft and log the action for review.';
-    }
-
-    window.setTimeout(() => {
-      setMessages((prev) => [...prev, { sender: 'ai', text: reply }]);
-    }, 450);
+    triggerToast('No matching ModDesk command found.', 'warning');
+    setCommandInput('');
   };
 
-  const renderModule = (id: WindowId) => {
-    if (id === 'academy') {
-      return <ModAcademy profile={profile} onProfileUpdate={handleProfileUpdate} triggerToast={triggerToast} />;
-    }
-    if (id === 'consensus') {
-      return <ConsensusDesk profile={profile} triggerToast={triggerToast} />;
-    }
-    if (id === 'typewriter') {
-      return <Typewriter triggerToast={triggerToast} />;
-    }
-    if (id === 'queue') {
-      return <QueueConsole profile={profile} onProfileUpdate={handleProfileUpdate} triggerToast={triggerToast} mode={mode} />;
-    }
-    if (id === 'settings') {
+  const renderModule = (target: WindowId) => {
+    if (target === 'queue') return <QueueConsole profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} mode={mode} />;
+    if (target === 'modmail') return <ModmailHub triggerToast={triggerToast} />;
+    if (target === 'automod') return <AutomodPanel triggerToast={triggerToast} />;
+    if (target === 'insights') return <InsightsPanel triggerToast={triggerToast} />;
+    if (target === 'typewriter') return <Typewriter triggerToast={triggerToast} />;
+    if (target === 'modlog') return <ModLogConsole triggerToast={triggerToast} />;
+    if (target === 'usergrid') return <UserControlRegistry triggerToast={triggerToast} />;
+    if (target === 'settings') {
       return (
         <SettingsPanel
           settings={settings}
-          onSettingsUpdate={(updatedSettings) => setSettings(updatedSettings)}
+          onSettingsUpdate={setSettings}
           profile={profile}
           triggerToast={triggerToast}
           onReset={onReset}
         />
       );
     }
-    if (id === 'automod') {
-      return <AutomodPanel triggerToast={triggerToast} />;
-    }
-    if (id === 'modlog') {
-      return <ModLogConsole triggerToast={triggerToast} />;
-    }
-    return <UserControlRegistry triggerToast={triggerToast} />;
+    if (target === 'consensus') return <ConsensusDesk profile={profile} triggerToast={triggerToast} />;
+    return <ModAcademy profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
   };
-
-  const leftDesktopItems = [
-    { label: 'home.mdx', glyph: 'Aa', action: () => openWindow('queue') },
-    { label: 'Mod OS', glyph: 'OS', action: () => openWindow('settings') },
-    { label: 'Pricing', glyph: '$', action: () => openWindow('consensus') },
-    { label: 'templates.mdx', glyph: 'MD', action: () => openWindow('typewriter') },
-    { label: 'demo.mov', glyph: '▶', action: () => openWindow('academy') },
-    { label: 'Docs', glyph: 'D', action: () => openWindow('automod') },
-    { label: 'Talk to a human', glyph: '@', action: () => openWindow('usergrid') },
-    { label: 'Ask a question', glyph: '?', action: () => setCopilotOpen(true) },
-  ];
-
-  const rightDesktopItems = [
-    { label: 'Why ModDesk?', glyph: 'WHY', action: () => openWindow('academy') },
-    { label: 'Changelog', glyph: 'LOG', action: () => setAuditsOpen(true) },
-    { label: 'Team handbook', glyph: 'BK', action: () => openWindow('consensus') },
-    { label: 'Store', glyph: 'BAG', action: () => openWindow('settings') },
-    { label: 'Work here', glyph: 'JOB', action: () => openWindow('modlog') },
-    { label: 'Trash', glyph: 'BIN', action: () => triggerToast('Nothing to empty. The workspace is tidy.', 'success') },
-  ];
 
   return (
     <main className="ph-os-shell">
       <header className="ph-os-menubar">
         <div className="ph-os-menu-left">
-          <button className="ph-mini-logo" onClick={() => openWindow('queue')} aria-label="Open queue">
+          <button className="ph-mini-logo" onClick={() => openWindow('queue')} aria-label="Open needs review">
             <span />
             <span />
             <span />
           </button>
-          <button onClick={() => openWindow('settings')}>Product OS</button>
-          <button onClick={() => openWindow('consensus')}>Pricing</button>
-          <button onClick={() => openWindow('automod')}>Docs</button>
-          <button onClick={() => openWindow('usergrid')}>Community</button>
-          <button onClick={() => setAuditsOpen(true)}>Company</button>
-          <button onClick={() => setCopilotOpen(true)}>More</button>
+          {categories.map((category) => (
+            <button key={category.label} onClick={() => openWindow(category.id)}>{category.label}</button>
+          ))}
         </div>
         <div className="ph-os-menu-right">
-          <button className="ph-top-cta" onClick={() => openWindow('queue')}>Get started - free</button>
-          <button className="ph-round-btn" onClick={() => setCopilotOpen(true)} aria-label="Search">⌕</button>
-          <button className="ph-round-btn" onClick={() => setCopilotOpen(true)} aria-label="Help">?</button>
-          <button className="ph-ticket-btn" onClick={() => setAuditsOpen(true)}>{auditTicker.length || 1}</button>
-          <button className="ph-round-btn" onClick={() => openWindow('settings')} aria-label="Profile">{profile.username.slice(0, 1).toUpperCase()}</button>
+          <div className="ph-segmented compact">
+            <button className={mode === 'demo' ? 'active' : ''} onClick={() => setMode('demo')}>Demo</button>
+            <button className={mode === 'live' ? 'active live' : ''} onClick={() => setMode('live')}>Live</button>
+          </div>
+          <span className="ph-clock">{dateLabel}</span>
+          <button className="ph-top-cta" onClick={() => openWindow('queue')}>{homeStats.queueOpen} Needs Review</button>
+          <button className="ph-round-btn" onClick={() => setCommandOpen(true)} aria-label="Search">/</button>
+          <button className="ph-ticket-btn" onClick={() => setAuditsOpen(true)}>{auditTicker.length || 0}</button>
+          <button className="ph-round-btn" onClick={() => openWindow('settings')} aria-label="Profile">
+            {profile.username.slice(0, 1).toUpperCase()}
+          </button>
         </div>
       </header>
 
       <section className="ph-desktop-icons left" aria-label="Desktop files">
-        {leftDesktopItems.map((item) => (
-          <button key={item.label} className="ph-file-icon" onClick={item.action}>
-            <span className="ph-file-art">{item.glyph}</span>
-            <strong>{item.label}</strong>
+        {modules.map((item) => (
+          <button key={item.file} className="ph-file-icon" onClick={() => openWindow(item.id)}>
+            <span className="ph-file-art image"><img src={item.icon} alt="" /></span>
+            <strong>{item.file}</strong>
           </button>
         ))}
       </section>
 
-      <section className="ph-desktop-icons right" aria-label="Desktop folders">
-        {rightDesktopItems.map((item) => (
-          <button key={item.label} className="ph-file-icon" onClick={item.action}>
+      <section className="ph-desktop-icons right" aria-label="Moderator categories">
+        {categories.map((item) => (
+          <button key={item.label} className="ph-file-icon" onClick={() => openWindow(item.id)}>
             <span className="ph-file-art folder">{item.glyph}</span>
             <strong>{item.label}</strong>
           </button>
         ))}
       </section>
 
-      <section className="ph-home-window" aria-label="home.mdx">
+      <section className="ph-home-window moddesk-home" aria-label="ModDesk home">
         <div className="ph-home-titlebar">
-          <button className="ph-doc-button" aria-label="home file">▣</button>
-          <strong>home.mdx⌄</strong>
+          <button className="ph-doc-button" onClick={() => openWindow('settings')} aria-label="ModDesk settings">MD</button>
+          <strong>moddesk-os.sys</strong>
           <div className="ph-window-actions" aria-hidden="true">
-            <span>—</span>
-            <span>□</span>
-            <span>×</span>
+            <span>-</span>
+            <span>[]</span>
+            <span>x</span>
           </div>
         </div>
         <div className="ph-editor-toolbar">
-          <button>↶</button>
-          <button>↷</button>
-          <span />
-          <button>Zoom⌄</button>
-          <button>B</button>
-          <button><i>I</i></button>
-          <button><u>U</u></button>
-          <button>Font⌄</button>
-          <button>☰</button>
-          <button>≡</button>
-          <button>⌕</button>
-          <button>⚙</button>
-          <button className="ph-top-cta" onClick={() => openWindow('queue')}>Get started - free</button>
+          {mainTabs.map((tab) => (
+            <button key={tab.id} onClick={() => openWindow(tab.id)}>{tab.label}</button>
+          ))}
+          <button className="ph-top-cta" onClick={() => setCommandOpen(true)}>Command</button>
         </div>
         <div className="ph-doc-scroll">
-          <div className="ph-tabs">
-            <button className="active">Understand product usage</button>
-            <button onClick={() => openWindow('queue')}>One place for mod data</button>
-            <button onClick={() => openWindow('modlog')}>Debug & fix issues</button>
-            <button onClick={() => openWindow('consensus')}>Test & roll out changes</button>
-          </div>
-
-          <section className="ph-blue-stage">
-            <button className="ph-pause" aria-label="Pause">Ⅱ</button>
-            <div className="ph-stage-copy">
-              <h1>Understand what your community is doing</h1>
-              <p>Measure reports, queue movement, rule confidence, moderator training, and user history from one playful desktop.</p>
-            </div>
-            <div className="ph-stage-copy">
-              <p>ModDesk can help your team decide faster, keep a paper trail, and build better subreddit operations with AI-assisted workflows.</p>
+          <section className="moddesk-command-center">
+            <div className="moddesk-status-head">
+              <div>
+                <span className="ph-kicker">{subredditLabel} / live moderator workspace</span>
+                <h1>ModDesk OS</h1>
+                <p>One document-window workspace for the queues, mail, policy, users, logs, and response work your mod team actually touches.</p>
+              </div>
+              <div className="moddesk-session-card">
+                <span>Active session</span>
+                <strong>u/{profile.username}</strong>
+                <em>{mode === 'live' ? 'Guarded live mode' : 'Local demo mode'}</em>
+              </div>
             </div>
 
-            <div className="ph-product-orbit">
-              <div className="ph-orbit-links left-links">
-                {moduleMeta.slice(0, 4).map((item) => (
-                  <button key={item.id} onClick={() => openWindow(item.id)}>
-                    <span className={`ph-dot ${item.tone}`} />
-                    {item.title}
+            <div className="moddesk-status-grid">
+              <button onClick={() => openWindow('queue')} className={homeStats.queueCritical > 0 ? 'alert' : ''}>
+                <span>Queue</span>
+                <strong>{homeStats.queueOpen}</strong>
+                <em>{homeStats.queueCritical} critical</em>
+              </button>
+              <button onClick={() => openWindow('modmail')}>
+                <span>Modmail</span>
+                <strong>{homeStats.modmailOpen}</strong>
+                <em>open threads</em>
+              </button>
+              <button onClick={() => openWindow('automod')}>
+                <span>Automod</span>
+                <strong>{homeStats.automodState}</strong>
+                <em>wiki/config/automoderator</em>
+              </button>
+              <button onClick={() => openWindow('modlog')}>
+                <span>Activity</span>
+                <strong>{homeStats.modlogCount}</strong>
+                <em>modlog/audit signals</em>
+              </button>
+            </div>
+
+            <div className="moddesk-product-grid">
+              <section className="moddesk-module-board">
+                {modules.map((module) => (
+                  <button key={module.id} className="moddesk-module-tile" onClick={() => openWindow(module.id)}>
+                    <img src={module.icon} alt="" />
+                    <span>{module.category}</span>
+                    <strong>{module.label}</strong>
+                    <em>{module.description}</em>
                   </button>
                 ))}
-              </div>
+              </section>
 
-              <div className="ph-builder-card">
-                <div className="ph-builder-mark">
-                  <span />
-                  <span />
-                  <span />
+              <aside className="moddesk-live-panel">
+                <div className="ph-panel-title">
+                  <span>Live workbench</span>
+                  <button onClick={() => setCommandOpen(true)}>Search</button>
                 </div>
-                <h2>Hello, moderator!</h2>
-                <label>
-                  <span>⌕</span>
-                  <input
-                    value={copilotInput}
-                    onChange={(event) => setCopilotInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        askCopilot(copilotInput);
-                        setCopilotOpen(true);
-                      }
-                    }}
-                    placeholder="What can I help you with?"
-                  />
-                </label>
-                <div className="ph-command-hint"><kbd>/</kbd> For commands</div>
-                <div className="ph-builder-actions">
-                  <button onClick={() => openWindow('academy')}>Learn</button>
-                  <button onClick={() => openWindow('automod')}>Build</button>
-                  <button onClick={() => setAuditsOpen(true)}>Signals</button>
+                <div className="moddesk-queue-mini">
+                  <span>Top queue items</span>
+                  {homeStats.latestQueue.length === 0 ? (
+                    <p>No open queue items returned for this subreddit.</p>
+                  ) : (
+                    homeStats.latestQueue.map((item) => (
+                      <button key={item.itemId} onClick={() => openWindow('queue')}>
+                        <strong>{item.reportCount} reports</strong>
+                        <span>{item.title || item.bodyExcerpt}</span>
+                      </button>
+                    ))
+                  )}
                 </div>
-              </div>
-
-              <div className="ph-orbit-links right-links">
-                {moduleMeta.slice(4).map((item) => (
-                  <button key={item.id} onClick={() => openWindow(item.id)}>
-                    <span className={`ph-dot ${item.tone}`} />
-                    {item.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="ph-os-section-grid">
-            <div className="ph-os-section-copy">
-              <h2>The new way to moderate communities</h2>
-              <p>Moderation used to mean jumping between queues, logs, wiki pages, user profiles, modmail, and spreadsheets. ModDesk turns it into a single operating system.</p>
-              <div className="ph-install-card">
-                <span>Install with AI in a single prompt</span>
-                <code>npx devvit playtest</code>
-              </div>
-            </div>
-            <div className="ph-mini-stats">
-              <button onClick={() => openWindow('academy')}><strong>{accuracy}%</strong><span>training accuracy</span></button>
-              <button onClick={() => openWindow('queue')}><strong>{profile.queueReviewed}</strong><span>queue reviews</span></button>
-              <button onClick={() => openWindow('consensus')}><strong>{profile.consensusVotesCast}</strong><span>votes cast</span></button>
-            </div>
-          </section>
-
-          <section className="ph-using">
-            <h2>Who's using ModDesk?</h2>
-            <p>Teams that want moderation to feel less like tab juggling and more like a proper product cockpit.</p>
-            <div className="ph-customer-row">
-              {['r/ProductMods', 'r/Builders', 'r/LaunchOps', 'r/CommunityHQ', 'r/Signals'].map((name) => (
-                <button key={name} onClick={() => openWindow('usergrid')}>{name}</button>
-              ))}
+                <div className="moddesk-activity-mini">
+                  <span>Recent audit</span>
+                  {visibleAudits.length === 0 ? (
+                    <p>No audit entries yet.</p>
+                  ) : (
+                    visibleAudits.map((audit) => (
+                      <button key={audit.eventId} onClick={() => setAuditsOpen(true)}>
+                        <strong>{audit.eventType}</strong>
+                        <span>{audit.summary}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </aside>
             </div>
           </section>
         </div>
       </section>
 
       <div className="ph-command-bar">
-        {moduleMeta.map((item) => {
+        {mainTabs.map((item) => {
           const win = windows[item.id];
           return (
             <button
               key={item.id}
               className={win.isOpen && !win.isMinimized ? 'active' : ''}
-              title={item.title}
+              title={item.label}
               onClick={() => toggleMinimize(item.id)}
             >
-              {windows[item.id].icon}
+              {win.icon}
             </button>
           );
         })}
-        <button className={copilotOpen ? 'active' : ''} title="Copilot" onClick={() => setCopilotOpen((open) => !open)}>AI</button>
+        <button className={commandOpen ? 'active' : ''} title="Command" onClick={() => setCommandOpen((open) => !open)}>/</button>
       </div>
 
-      {moduleMeta.map((item) => {
-        const win = windows[item.id];
+      {windowIds.map((item) => {
+        const win = windows[item];
         return (
           <RetroWindow
-            key={item.id}
-            id={item.id}
+            key={item}
+            id={item}
             title={win.title}
             icon={win.icon}
             isOpen={win.isOpen}
-            onClose={() => closeWindow(item.id)}
-            isActive={activeWindow === item.id}
-            onFocus={() => setActiveWindow(item.id)}
+            onClose={() => closeWindow(item)}
+            isActive={activeWindow === item}
+            onFocus={() => setActiveWindow(item)}
             isMinimized={win.isMinimized}
             isMaximized={win.isMaximized}
-            onMinimize={() => minimizeWindow(item.id)}
-            onMaximize={() => maximizeWindow(item.id)}
+            onMinimize={() => minimizeWindow(item)}
+            onMaximize={() => maximizeWindow(item)}
             defaultPosition={win.position}
             defaultSize={{ width: win.width, height: win.height }}
           >
-            {renderModule(item.id)}
+            {renderModule(item)}
           </RetroWindow>
         );
       })}
@@ -535,7 +571,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
             {auditTicker.map((audit) => (
               <div key={audit.eventId}>
                 <span>{new Date(audit.createdAt).toLocaleString()}</span>
-                <strong>{audit.actor} · {audit.eventType}</strong>
+                <strong>{audit.actor} / {audit.eventType}</strong>
                 <p>{audit.summary}</p>
               </div>
             ))}
@@ -543,41 +579,40 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
         </RetroWindow>
       )}
 
-      <aside className={`ph-copilot ${copilotOpen ? 'open' : ''}`} aria-label="AI moderation copilot">
-        <div className="ph-copilot-head">
-          <div>
-            <span className="ph-kicker">AI assistant</span>
-            <strong>Mod Copilot</strong>
-          </div>
-          <button onClick={() => setCopilotOpen(false)}>Close</button>
-        </div>
-
-        <div className="ph-chat">
-          {messages.map((message, index) => (
-            <div key={index} className={message.sender === 'user' ? 'user' : ''}>
-              {message.text}
+      {commandOpen && (
+        <aside className="ph-copilot open" aria-label="ModDesk command palette">
+          <div className="ph-copilot-head">
+            <div>
+              <span className="ph-kicker">Command palette</span>
+              <strong>Open tools or summarize</strong>
             </div>
-          ))}
-        </div>
-
-        <div className="ph-prompts">
-          <button onClick={() => askCopilot('Summarize the queue')}>Queue summary</button>
-          <button onClick={() => askCopilot('Draft a warning')}>Draft warning</button>
-          <button onClick={() => askCopilot('Find spam pattern')}>Spam pattern</button>
-        </div>
-
-        <div className="ph-chat-input">
-          <input
-            value={copilotInput}
-            onChange={(event) => setCopilotInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') askCopilot(copilotInput);
-            }}
-            placeholder="Ask for a moderation readout"
-          />
-          <button onClick={() => askCopilot(copilotInput)}>Send</button>
-        </div>
-      </aside>
+            <button onClick={() => setCommandOpen(false)}>Close</button>
+          </div>
+          <div className="ph-command-summary">
+            <button onClick={() => openWindow('queue')}><strong>{homeStats.queueOpen}</strong><span>needs review</span></button>
+            <button onClick={() => openWindow('modmail')}><strong>{homeStats.modmailOpen}</strong><span>modmail open</span></button>
+            <button onClick={() => openWindow('modlog')}><strong>{auditTicker.length}</strong><span>audit events</span></button>
+          </div>
+          <div className="ph-prompts">
+            {modules.map((module) => (
+              <button key={module.id} onClick={() => openWindow(module.id)}>{module.label}</button>
+            ))}
+            <button onClick={() => setAuditsOpen(true)}>Audit feed</button>
+          </div>
+          <div className="ph-chat-input">
+            <input
+              value={commandInput}
+              onChange={(event) => setCommandInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') runCommand(commandInput);
+              }}
+              placeholder="Try queue, modmail, users, automod..."
+            />
+            <button onClick={() => runCommand(commandInput)}>Run</button>
+          </div>
+          <p className="ph-command-footnote">Search opens real modules and live summaries only. Unsupported Reddit metrics stay unavailable instead of being invented.</p>
+        </aside>
+      )}
     </main>
   );
 };

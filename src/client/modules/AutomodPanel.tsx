@@ -1,9 +1,10 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
-interface AutomodPanelProps {
+type AutomodPanelProps = {
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
-}
+};
 
 export const AutomodPanel: React.FC<AutomodPanelProps> = ({ triggerToast }) => {
   const [yaml, setYaml] = useState('');
@@ -22,7 +23,7 @@ export const AutomodPanel: React.FC<AutomodPanelProps> = ({ triggerToast }) => {
       const res = await api.getAutomod();
       setYaml(res.content);
       triggerToast('Wiki config/automod rules loaded successfully.', 'success');
-    } catch (err: any) {
+    } catch {
       triggerToast('Could not fetch custom wiki config; loaded default template.', 'info');
     } finally {
       setLoading(false);
@@ -134,8 +135,8 @@ action_reason: "High hostility toxicity warning trigger"
       await api.saveAutomod(yaml, reason);
       triggerToast('Wiki config/automod committed successfully!', 'success');
       setValidationReport({ status: 'idle', message: '', errors: [] });
-    } catch (err: any) {
-      triggerToast(err.message || 'Failed to update Automod Wiki config.', 'error');
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : 'Failed to update Automod Wiki config.', 'error');
     } finally {
       setLoading(false);
     }

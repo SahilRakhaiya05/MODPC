@@ -1,19 +1,21 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
-interface UserControlRegistryProps {
+type UserControlRegistryProps = {
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
-}
+};
 
 type TabType = 'banned' | 'muted' | 'approved' | 'moderators';
+type UserActionType = Exclude<TabType, 'moderators'>;
 
-interface RegistryUser {
+type RegistryUser = {
   username: string;
   role?: string;
   reason?: string;
   duration?: string | number;
   date?: string;
-}
+};
 
 export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ triggerToast }) => {
   const [activeTab, setActiveTab] = useState<TabType>('banned');
@@ -26,14 +28,15 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
   const [durationInput, setDurationInput] = useState(0); // 0 = permanent
   const [noteInput, setNoteInput] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [confirmLiveAction, setConfirmLiveAction] = useState(false);
 
   const fetchUsers = async (tab: TabType) => {
     setLoading(true);
     try {
       const res = await api.getLiveUsers(tab);
       setUsers(res.users);
-    } catch (err: any) {
-      triggerToast(err.message || `Failed to fetch users registry for ${tab}.`, 'error');
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : `Failed to fetch users registry for ${tab}.`, 'error');
     } finally {
       setLoading(false);
     }
@@ -43,13 +46,19 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
     void fetchUsers(activeTab);
   }, [activeTab]);
 
+  const activeUserActionType: UserActionType | null = activeTab === 'moderators' ? null : activeTab;
+
   const handleUserAction = async (
-    type: 'banned' | 'muted' | 'approved',
+    type: UserActionType,
     username: string,
     action: 'add' | 'remove'
   ) => {
     if (!username.trim()) {
       triggerToast('Please provide a valid username.', 'warning');
+      return;
+    }
+    if (!confirmLiveAction) {
+      triggerToast('Confirm the guarded live user action first.', 'warning');
       return;
     }
 
@@ -62,7 +71,8 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
         action,
         duration: durationInput,
         reason: reasonInput,
-        note: noteInput
+        note: noteInput,
+        confirmation: confirmLiveAction
       });
 
       if (res.success) {
@@ -75,11 +85,12 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
         setReasonInput('');
         setDurationInput(0);
         setNoteInput('');
+        setConfirmLiveAction(false);
         // Re-fetch active tab
         void fetchUsers(activeTab);
       }
-    } catch (err: any) {
-      triggerToast(err.message || 'Subreddit user action operation failed.', 'error');
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : 'Subreddit user action operation failed.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -206,11 +217,11 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                   </div>
 
                   {/* Actions buttons */}
-                  {activeTab !== 'moderators' && (
+                  {activeUserActionType && (
                     <button
                       className="glass-btn danger"
                       style={{ fontSize: '9px', padding: '4px 10px', flexShrink: 0 }}
-                      onClick={() => handleUserAction(activeTab as any, u.username, 'remove')}
+                      onClick={() => handleUserAction(activeUserActionType, u.username, 'remove')}
                       disabled={actionLoading}
                     >
                       {activeTab === 'banned' ? 'UNBAN' : activeTab === 'muted' ? 'UNMUTE' : 'REMOVE APPROVED'}
@@ -312,20 +323,29 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                 </div>
               )}
 
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, lineHeight: 1.35 }}>
+                <input
+                  type="checkbox"
+                  checked={confirmLiveAction}
+                  onChange={(event) => setConfirmLiveAction(event.target.checked)}
+                />
+                Confirm this change will be applied to the live subreddit user registry.
+              </label>
+
               {/* Action execute button */}
               <button
                 className={`glass-btn ${activeTab === 'banned' ? 'danger' : 'primary'}`}
                 style={{ fontWeight: 600, padding: '10px', marginTop: '6px' }}
-                onClick={() => handleUserAction(activeTab as any, usernameInput, 'add')}
-                disabled={actionLoading || !usernameInput.trim()}
+                onClick={() => activeUserActionType && handleUserAction(activeUserActionType, usernameInput, 'add')}
+                disabled={actionLoading || !usernameInput.trim() || !confirmLiveAction}
               >
-                {actionLoading 
-                  ? 'TRANSMITTING...' 
-                  : activeTab === 'banned' 
-                    ? '🛡️ COMMIT BANNED STATUS' 
-                    : activeTab === 'muted' 
-                      ? '🔇 MUTE FROM CONTACTS' 
-                      : '🟢 DEPLOY APPROVED STATUS'
+                {actionLoading
+                  ? 'Working...'
+                  : activeTab === 'banned'
+                    ? 'Commit banned status'
+                    : activeTab === 'muted'
+                      ? 'Mute from contacts'
+                      : 'Deploy approved status'
                 }
               </button>
 

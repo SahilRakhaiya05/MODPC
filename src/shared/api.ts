@@ -30,10 +30,39 @@ export type ThresholdMode = 'simple_majority' | 'fixed_count' | 'two_thirds';
 export type ThemeMode = 'authentic' | 'modern' | 'high_contrast';
 
 export type ModContext = {
-  username: string;
+  username: string | null;
   subredditName: string;
   isModerator: boolean;
   redisStatus: 'ok' | 'degraded';
+};
+
+export type AuthErrorCode =
+  | 'NOT_LOGGED_IN'
+  | 'NOT_MODERATOR'
+  | 'MISSING_PERMISSION'
+  | 'REDDIT_API_UNAVAILABLE';
+
+export type ModuleCapability = {
+  enabled: boolean;
+  live: boolean;
+  reason?: AuthErrorCode;
+  detail?: string;
+};
+
+export type SessionResponse = {
+  username: string | null;
+  subredditName: string;
+  isModerator: boolean;
+  errors: Array<{ code: AuthErrorCode; message: string }>;
+  capabilities: {
+    queue: ModuleCapability;
+    modmail: ModuleCapability;
+    automod: ModuleCapability;
+    modlog: ModuleCapability;
+    users: ModuleCapability;
+    flairs: ModuleCapability;
+    insights: ModuleCapability;
+  };
 };
 
 export type AppSettings = {
@@ -244,6 +273,32 @@ export type QueueActionRequest = {
   itemId: string;
   action: 'reviewed' | 'approve' | 'remove' | 'escalate' | 'snooze';
   note: string;
+  confirmation?: 'CONFIRM_LIVE_ACTION';
+};
+
+export type LiveInsightRule = {
+  rule: string;
+  count: number;
+  percentage: number;
+};
+
+export type LiveInsightPoint = {
+  label: string;
+  count: number;
+};
+
+export type LiveInsightResponse = {
+  source: 'live' | 'derived' | 'unavailable';
+  generatedAt: string;
+  queueOpen: number;
+  queueCritical: number;
+  modmailOpen: number | null;
+  modlogEvents: number;
+  auditEvents: number;
+  automodState: 'live' | 'empty' | 'unavailable';
+  rulesViolated: LiveInsightRule[];
+  activityStats: LiveInsightPoint[];
+  telemetryLogs: Array<{ timestamp: string; message: string }>;
 };
 
 export type UpdateSettingsRequest = Partial<
@@ -264,6 +319,7 @@ export type UpdateSettingsRequest = Partial<
 
 export type ApiError = {
   status: 'error';
+  code?: AuthErrorCode;
   message: string;
 };
 

@@ -1481,6 +1481,276 @@ button {
   color: white;
 }
 
+.ph-clock {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ph-segmented.compact {
+  border-width: 1px;
+  border-radius: 7px;
+}
+
+.ph-segmented.compact button {
+  min-width: 48px;
+  min-height: 26px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.moddesk-home .ph-doc-scroll {
+  background: #fffdf7;
+}
+
+.moddesk-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  gap: 24px;
+  width: min(1040px, calc(100% - 64px));
+  margin: 24px auto;
+  align-items: center;
+}
+
+.moddesk-copy h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(36px, 6vw, 72px);
+  line-height: 0.95;
+}
+
+.moddesk-copy p {
+  max-width: 680px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.moddesk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.moddesk-overview img {
+  width: 100%;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow-hard);
+}
+
+.moddesk-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  width: min(1040px, calc(100% - 64px));
+  margin: 0 auto 22px;
+}
+
+.moddesk-metrics button,
+.insight-kpis button {
+  display: grid;
+  gap: 4px;
+  min-height: 96px;
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: #fffaf2;
+  text-align: left;
+}
+
+.moddesk-metrics strong,
+.insight-kpis strong {
+  font-size: 28px;
+}
+
+.moddesk-metrics span,
+.insight-kpis span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.moddesk-audit-strip {
+  width: min(1040px, calc(100% - 64px));
+  margin: 0 auto 42px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.access-gate {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background: var(--page);
+}
+
+.access-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 620px);
+  padding: 24px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: var(--shadow-hard);
+}
+
+.access-mark {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--orange);
+  color: white;
+  font-weight: 900;
+}
+
+.access-card h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.access-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.access-errors {
+  display: grid;
+  gap: 8px;
+}
+
+.access-errors div {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #fff4e4;
+}
+
+.access-errors strong {
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.access-note {
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+
+.module-empty {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  color: var(--glass-text-muted);
+  font-family: var(--font-mono);
+}
+
+.insights-panel {
+  display: grid;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.insight-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 14px;
+}
+
+.insight-card {
+  padding: 14px;
+}
+
+.insight-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  min-height: 190px;
+  padding-top: 18px;
+}
+
+.insight-bars div {
+  display: grid;
+  justify-items: center;
+  align-items: end;
+  gap: 8px;
+}
+
+.insight-bars span {
+  display: block;
+  width: 100%;
+  border: 2px solid var(--line);
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, var(--blue), #9fc0ff);
+}
+
+.insight-bars em,
+.insight-log span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.insight-rules,
+.insight-log {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.insight-rules div {
+  display: grid;
+  gap: 5px;
+}
+
+.insight-rules span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.insight-rules i {
+  display: block;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--orange);
+}
+
+.insight-log div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.insight-log p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .splash-shell {
   display: grid;
   place-items: center;
@@ -1853,5 +2123,935 @@ button {
 
   .ph-segmented button {
     flex: 1;
+  }
+}
+
+/* ModDesk OS rebuild overrides: compact PostHog-style product shell, Reddit-native modules. */
+.ph-home-window {
+  width: min(1120px, calc(100vw - 300px));
+  height: calc(100vh - 86px);
+}
+
+.ph-file-art.image {
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border-radius: 8px;
+  background: #fffaf2;
+  box-shadow: 3px 3px 0 rgba(24, 17, 12, 0.24);
+}
+
+.ph-file-art.image img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  transform: scale(1.28);
+}
+
+.ph-file-art.image::before {
+  display: none;
+}
+
+.glass-window {
+  background: #fffdf7;
+  color: var(--ink);
+}
+
+.glass-window-header {
+  background: #f4eadc;
+}
+
+.glass-window-title > span:last-child {
+  color: var(--ink) !important;
+}
+
+.glass-window-content {
+  min-height: 0;
+  overflow: auto;
+  background: #fffdf7 !important;
+}
+
+.glass-window > div:last-child {
+  background: #f4eadc !important;
+  color: var(--muted) !important;
+  border-top: 1px solid var(--line-soft) !important;
+}
+
+.window-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(24, 17, 12, 0.34) 45% 52%, transparent 52%),
+    linear-gradient(135deg, transparent 0 62%, rgba(24, 17, 12, 0.34) 62% 69%, transparent 69%);
+  cursor: nwse-resize;
+}
+
+.moddesk-command-center {
+  display: grid;
+  gap: 16px;
+  width: min(1000px, calc(100% - 42px));
+  margin: 18px auto 34px;
+}
+
+.moddesk-status-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.moddesk-status-head h1 {
+  margin: 4px 0 6px;
+  font-size: clamp(34px, 5vw, 58px);
+  line-height: 0.96;
+}
+
+.moddesk-status-head p {
+  max-width: 740px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.moddesk-session-card,
+.moddesk-status-grid button,
+.moddesk-module-tile,
+.moddesk-live-panel,
+.modmail-pane {
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: 3px 3px 0 rgba(24, 17, 12, 0.14);
+}
+
+.moddesk-session-card {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 14px;
+}
+
+.moddesk-session-card span,
+.moddesk-session-card em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.moddesk-session-card strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+}
+
+.moddesk-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.moddesk-status-grid button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 86px;
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.moddesk-status-grid button:hover,
+.moddesk-module-tile:hover,
+.moddesk-live-panel button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 rgba(24, 17, 12, 0.24);
+}
+
+.moddesk-status-grid button.alert {
+  background: #fff0ed;
+}
+
+.moddesk-status-grid span,
+.moddesk-status-grid em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.moddesk-status-grid strong {
+  overflow: hidden;
+  font-size: 24px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.moddesk-product-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 14px;
+  min-width: 0;
+}
+
+.moddesk-module-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.moddesk-module-tile {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 10px;
+  min-width: 0;
+  min-height: 118px;
+  padding: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.moddesk-module-tile img {
+  grid-row: 1 / 4;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.moddesk-module-tile span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.moddesk-module-tile strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moddesk-module-tile em {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.moddesk-live-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.moddesk-queue-mini,
+.moddesk-activity-mini,
+.ph-command-summary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.moddesk-queue-mini > span,
+.moddesk-activity-mini > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.moddesk-queue-mini button,
+.moddesk-activity-mini button,
+.ph-command-summary button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #fffaf2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.moddesk-queue-mini p,
+.moddesk-activity-mini p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.moddesk-queue-mini strong,
+.moddesk-activity-mini strong,
+.ph-command-summary strong {
+  font-size: 12px;
+}
+
+.moddesk-queue-mini span,
+.moddesk-activity-mini span,
+.ph-command-summary span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-command-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.ph-command-footnote {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.module-eyebrow {
+  color: var(--orange-dark);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.module-empty.compact {
+  min-height: 120px;
+  font-size: 12px;
+}
+
+.modmail-shell {
+  display: grid;
+  grid-template-columns: 160px 240px minmax(0, 1fr) 190px;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  color: var(--ink);
+}
+
+.modmail-pane {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+}
+
+.modmail-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modmail-folders button:not(.modmail-sync) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modmail-folders button.active {
+  border-color: rgba(244, 93, 34, 0.36) !important;
+  background: #fff0e5 !important;
+  color: var(--ink) !important;
+}
+
+.modmail-folders strong {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: white;
+  font-size: 11px;
+}
+
+.modmail-sync {
+  margin-top: auto;
+  width: 100%;
+}
+
+.modmail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modmail-thread-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.modmail-thread-list button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fffaf2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.modmail-thread-list button.active {
+  border-color: var(--orange);
+  background: #fff0e5;
+}
+
+.modmail-thread-list span,
+.modmail-thread-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modmail-thread-list strong,
+.modmail-thread-list b,
+.modmail-thread-list small,
+.modmail-thread-head h3,
+.modmail-thread-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modmail-thread-list strong {
+  font-size: 12px;
+}
+
+.modmail-thread-list em,
+.modmail-thread-list small,
+.modmail-thread-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.modmail-thread-list b {
+  font-size: 12px;
+}
+
+.modmail-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modmail-thread-head {
+  align-items: flex-start;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modmail-thread-head h3 {
+  margin: 0 0 3px;
+  font-size: 16px;
+}
+
+.modmail-thread-head > div:last-child {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.modmail-thread-head .glass-btn {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.modmail-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.modmail-messages article {
+  display: grid;
+  gap: 3px;
+  max-width: 78%;
+}
+
+.modmail-messages article.mod {
+  align-self: flex-end;
+}
+
+.modmail-messages article > span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.modmail-messages p {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #fff7ec;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.modmail-messages article.mod p {
+  background: #eaf8ef;
+}
+
+.modmail-messages p.internal {
+  border-style: dashed;
+  background: #fff8d7;
+}
+
+.modmail-compose {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.modmail-macros {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.modmail-macros span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modmail-macros button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fffaf2;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.modmail-compose textarea {
+  min-height: 72px;
+  max-height: 130px;
+  resize: vertical;
+}
+
+.modmail-send-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modmail-send-row label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modmail-profile {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.modmail-profile h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.modmail-profile .ok {
+  color: var(--green);
+}
+
+.modmail-profile .danger {
+  color: var(--red);
+}
+
+.modmail-profile dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.modmail-profile div {
+  display: grid;
+  gap: 2px;
+}
+
+.modmail-profile dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modmail-profile dd {
+  margin: 0;
+  font-weight: 900;
+}
+
+.modmail-profile p {
+  margin: 0;
+  padding: 9px;
+  border-radius: 7px;
+  background: #fff7ec;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--ink);
+}
+
+.settings-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 180px);
+  gap: 12px;
+  align-items: stretch;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-header h3 {
+  margin: 3px 0 5px;
+  font-size: 20px;
+}
+
+.settings-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.settings-session,
+.settings-card,
+.settings-modal {
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: 3px 3px 0 rgba(24, 17, 12, 0.14);
+}
+
+.settings-session {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.settings-session span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.settings-session strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-form {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-card label,
+.settings-range {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-card label > span,
+.settings-range > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.settings-card .glass-input {
+  min-width: 0;
+  background: #fffdf8;
+}
+
+.settings-card input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.settings-range > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-range input {
+  min-width: 0;
+  accent-color: var(--green);
+}
+
+.settings-range strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 58px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #eaf8ef;
+}
+
+.settings-range em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.settings-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0 2px;
+  background: linear-gradient(180deg, rgba(255, 253, 247, 0), #fffdf7 34%);
+}
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(24, 17, 12, 0.42);
+  backdrop-filter: blur(8px);
+}
+
+.settings-modal {
+  display: grid;
+  width: min(460px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+
+.settings-modal header,
+.settings-modal footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-modal footer {
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 0;
+}
+
+.settings-modal header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.settings-modal-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.settings-modal-body h4 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.settings-modal-body p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.settings-modal-body div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #fff7ec;
+}
+
+.settings-modal-body div span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.settings-modal-body div strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settings-modal-body label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+@media (max-width: 1180px) {
+  .moddesk-product-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modmail-shell {
+    grid-template-columns: 150px 220px minmax(0, 1fr);
+  }
+
+  .modmail-profile {
+    display: none;
+  }
+
+  .settings-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .moddesk-status-head,
+  .moddesk-status-grid,
+  .moddesk-module-board {
+    grid-template-columns: 1fr;
+  }
+
+  .modmail-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .modmail-pane {
+    min-height: 220px;
+  }
+
+  .modmail-folders {
+    min-height: 0;
+  }
+
+  .modmail-thread {
+    min-height: 520px;
+  }
+
+  .settings-header {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-actions,
+  .settings-modal footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-actions .glass-btn,
+  .settings-modal footer .glass-btn {
+    width: 100%;
   }
 }
