@@ -294,147 +294,188 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, triggerT
     return <UserControlRegistry triggerToast={triggerToast} />;
   };
 
+  const leftDesktopItems = [
+    { label: 'home.mdx', glyph: 'Aa', action: () => openWindow('queue') },
+    { label: 'Mod OS', glyph: 'OS', action: () => openWindow('settings') },
+    { label: 'Pricing', glyph: '$', action: () => openWindow('consensus') },
+    { label: 'templates.mdx', glyph: 'MD', action: () => openWindow('typewriter') },
+    { label: 'demo.mov', glyph: '▶', action: () => openWindow('academy') },
+    { label: 'Docs', glyph: 'D', action: () => openWindow('automod') },
+    { label: 'Talk to a human', glyph: '@', action: () => openWindow('usergrid') },
+    { label: 'Ask a question', glyph: '?', action: () => setCopilotOpen(true) },
+  ];
+
+  const rightDesktopItems = [
+    { label: 'Why ModDesk?', glyph: 'WHY', action: () => openWindow('academy') },
+    { label: 'Changelog', glyph: 'LOG', action: () => setAuditsOpen(true) },
+    { label: 'Team handbook', glyph: 'BK', action: () => openWindow('consensus') },
+    { label: 'Store', glyph: 'BAG', action: () => openWindow('settings') },
+    { label: 'Work here', glyph: 'JOB', action: () => openWindow('modlog') },
+    { label: 'Trash', glyph: 'BIN', action: () => triggerToast('Nothing to empty. The workspace is tidy.', 'success') },
+  ];
+
   return (
-    <main className="ph-shell">
-      <aside className="ph-sidebar" aria-label="Workspace navigation">
-        <div className="ph-brand">
-          <div className="ph-brand-mark">M</div>
-          <div>
-            <strong>ModDesk</strong>
-            <span>Product OS for mods</span>
+    <main className="ph-os-shell">
+      <header className="ph-os-menubar">
+        <div className="ph-os-menu-left">
+          <button className="ph-mini-logo" onClick={() => openWindow('queue')} aria-label="Open queue">
+            <span />
+            <span />
+            <span />
+          </button>
+          <button onClick={() => openWindow('settings')}>Product OS</button>
+          <button onClick={() => openWindow('consensus')}>Pricing</button>
+          <button onClick={() => openWindow('automod')}>Docs</button>
+          <button onClick={() => openWindow('usergrid')}>Community</button>
+          <button onClick={() => setAuditsOpen(true)}>Company</button>
+          <button onClick={() => setCopilotOpen(true)}>More</button>
+        </div>
+        <div className="ph-os-menu-right">
+          <button className="ph-top-cta" onClick={() => openWindow('queue')}>Get started - free</button>
+          <button className="ph-round-btn" onClick={() => setCopilotOpen(true)} aria-label="Search">⌕</button>
+          <button className="ph-round-btn" onClick={() => setCopilotOpen(true)} aria-label="Help">?</button>
+          <button className="ph-ticket-btn" onClick={() => setAuditsOpen(true)}>{auditTicker.length || 1}</button>
+          <button className="ph-round-btn" onClick={() => openWindow('settings')} aria-label="Profile">{profile.username.slice(0, 1).toUpperCase()}</button>
+        </div>
+      </header>
+
+      <section className="ph-desktop-icons left" aria-label="Desktop files">
+        {leftDesktopItems.map((item) => (
+          <button key={item.label} className="ph-file-icon" onClick={item.action}>
+            <span className="ph-file-art">{item.glyph}</span>
+            <strong>{item.label}</strong>
+          </button>
+        ))}
+      </section>
+
+      <section className="ph-desktop-icons right" aria-label="Desktop folders">
+        {rightDesktopItems.map((item) => (
+          <button key={item.label} className="ph-file-icon" onClick={item.action}>
+            <span className="ph-file-art folder">{item.glyph}</span>
+            <strong>{item.label}</strong>
+          </button>
+        ))}
+      </section>
+
+      <section className="ph-home-window" aria-label="home.mdx">
+        <div className="ph-home-titlebar">
+          <button className="ph-doc-button" aria-label="home file">▣</button>
+          <strong>home.mdx⌄</strong>
+          <div className="ph-window-actions" aria-hidden="true">
+            <span>—</span>
+            <span>□</span>
+            <span>×</span>
           </div>
         </div>
-
-        <nav className="ph-nav">
-          {moduleMeta.slice(0, 6).map((item) => (
-            <button key={item.id} className="ph-nav-item" onClick={() => openWindow(item.id)}>
-              <span className={`ph-dot ${item.tone}`} />
-              {item.title}
-            </button>
-          ))}
-        </nav>
-
-        <button className="ph-sidebar-cta" onClick={() => setCopilotOpen(true)}>
-          Ask Copilot
-          <span>Get a moderation readout</span>
-        </button>
-      </aside>
-
-      <section className="ph-workspace">
-        <header className="ph-topbar">
-          <div className="ph-community">
-            <span className="ph-kicker">Community workspace</span>
-            <h1>{settings.subredditName.replace(' (Standalone)', '')}</h1>
+        <div className="ph-editor-toolbar">
+          <button>↶</button>
+          <button>↷</button>
+          <span />
+          <button>Zoom⌄</button>
+          <button>B</button>
+          <button><i>I</i></button>
+          <button><u>U</u></button>
+          <button>Font⌄</button>
+          <button>☰</button>
+          <button>≡</button>
+          <button>⌕</button>
+          <button>⚙</button>
+          <button className="ph-top-cta" onClick={() => openWindow('queue')}>Get started - free</button>
+        </div>
+        <div className="ph-doc-scroll">
+          <div className="ph-tabs">
+            <button className="active">Understand product usage</button>
+            <button onClick={() => openWindow('queue')}>One place for mod data</button>
+            <button onClick={() => openWindow('modlog')}>Debug & fix issues</button>
+            <button onClick={() => openWindow('consensus')}>Test & roll out changes</button>
           </div>
 
-          <div className="ph-actions">
-            <div className="ph-segmented" aria-label="Mode selector">
-              <button
-                className={mode === 'demo' ? 'active' : ''}
-                onClick={() => {
-                  setMode('demo');
-                  triggerToast('Demo workspace enabled.', 'info');
-                }}
-              >
-                Demo
-              </button>
-              <button
-                className={mode === 'live' ? 'active live' : ''}
-                onClick={() => {
-                  setMode('live');
-                  triggerToast('Live subreddit mode enabled.', 'warning');
-                }}
-              >
-                Live
-              </button>
+          <section className="ph-blue-stage">
+            <button className="ph-pause" aria-label="Pause">Ⅱ</button>
+            <div className="ph-stage-copy">
+              <h1>Understand what your community is doing</h1>
+              <p>Measure reports, queue movement, rule confidence, moderator training, and user history from one playful desktop.</p>
             </div>
-            <button className="glass-btn" onClick={() => setAuditsOpen(true)}>Audit log</button>
-            <button className="glass-btn primary" onClick={() => openWindow('queue')}>Open queue</button>
-          </div>
-        </header>
+            <div className="ph-stage-copy">
+              <p>ModDesk can help your team decide faster, keep a paper trail, and build better subreddit operations with AI-assisted workflows.</p>
+            </div>
 
-        <section className="ph-hero">
-          <div className="ph-hero-copy">
-            <span className="ph-kicker">New moderation cockpit</span>
-            <h2>Understand, decide, and act from one sharp workspace.</h2>
-            <p>
-              Queue triage, consensus decisions, AutoMod drafts, templates, and user context
-              now live in a clean product-engineering dashboard built for fast scanning.
-            </p>
-            <div className="ph-hero-actions">
-              <button className="glass-btn primary" onClick={() => openWindow('academy')}>Start training</button>
-              <button className="glass-btn" onClick={() => setCopilotOpen(true)}>Ask AI copilot</button>
-            </div>
-          </div>
+            <div className="ph-product-orbit">
+              <div className="ph-orbit-links left-links">
+                {moduleMeta.slice(0, 4).map((item) => (
+                  <button key={item.id} onClick={() => openWindow(item.id)}>
+                    <span className={`ph-dot ${item.tone}`} />
+                    {item.title}
+                  </button>
+                ))}
+              </div>
 
-          <div className="ph-analytics-card">
-            <div className="ph-card-header">
-              <span>Moderation health</span>
-              <strong>{dateLabel}</strong>
+              <div className="ph-builder-card">
+                <div className="ph-builder-mark">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <h2>Hello, moderator!</h2>
+                <label>
+                  <span>⌕</span>
+                  <input
+                    value={copilotInput}
+                    onChange={(event) => setCopilotInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        askCopilot(copilotInput);
+                        setCopilotOpen(true);
+                      }
+                    }}
+                    placeholder="What can I help you with?"
+                  />
+                </label>
+                <div className="ph-command-hint"><kbd>/</kbd> For commands</div>
+                <div className="ph-builder-actions">
+                  <button onClick={() => openWindow('academy')}>Learn</button>
+                  <button onClick={() => openWindow('automod')}>Build</button>
+                  <button onClick={() => setAuditsOpen(true)}>Signals</button>
+                </div>
+              </div>
+
+              <div className="ph-orbit-links right-links">
+                {moduleMeta.slice(4).map((item) => (
+                  <button key={item.id} onClick={() => openWindow(item.id)}>
+                    <span className={`ph-dot ${item.tone}`} />
+                    {item.title}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="ph-bars" aria-hidden="true">
-              {[48, 76, 52, 88, 64, 72, 56, 92, 70, 84, 62, 78].map((height, index) => (
-                <span key={index} style={{ height: `${height}%` }} />
+          </section>
+
+          <section className="ph-os-section-grid">
+            <div className="ph-os-section-copy">
+              <h2>The new way to moderate communities</h2>
+              <p>Moderation used to mean jumping between queues, logs, wiki pages, user profiles, modmail, and spreadsheets. ModDesk turns it into a single operating system.</p>
+              <div className="ph-install-card">
+                <span>Install with AI in a single prompt</span>
+                <code>npx devvit playtest</code>
+              </div>
+            </div>
+            <div className="ph-mini-stats">
+              <button onClick={() => openWindow('academy')}><strong>{accuracy}%</strong><span>training accuracy</span></button>
+              <button onClick={() => openWindow('queue')}><strong>{profile.queueReviewed}</strong><span>queue reviews</span></button>
+              <button onClick={() => openWindow('consensus')}><strong>{profile.consensusVotesCast}</strong><span>votes cast</span></button>
+            </div>
+          </section>
+
+          <section className="ph-using">
+            <h2>Who's using ModDesk?</h2>
+            <p>Teams that want moderation to feel less like tab juggling and more like a proper product cockpit.</p>
+            <div className="ph-customer-row">
+              {['r/ProductMods', 'r/Builders', 'r/LaunchOps', 'r/CommunityHQ', 'r/Signals'].map((name) => (
+                <button key={name} onClick={() => openWindow('usergrid')}>{name}</button>
               ))}
             </div>
-            <div className="ph-health-grid">
-              <div>
-                <strong>{accuracy}%</strong>
-                <span>training accuracy</span>
-              </div>
-              <div>
-                <strong>{profile.queueReviewed}</strong>
-                <span>queue reviews</span>
-              </div>
-              <div>
-                <strong>{profile.consensusVotesCast}</strong>
-                <span>votes cast</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="ph-module-grid" aria-label="Moderator tools">
-          {moduleMeta.map((item) => (
-            <button key={item.id} className={`ph-module-card ${item.tone}`} onClick={() => openWindow(item.id)}>
-              <span className="ph-card-eyebrow">{item.eyebrow}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-              <span className="ph-card-stat">
-                <b>{item.metric}</b>
-                {item.trend}
-              </span>
-            </button>
-          ))}
-        </section>
-
-        <section className="ph-lower-grid">
-          <div className="ph-table-panel">
-            <div className="ph-panel-title">
-              <span>Recent audit stream</span>
-              <button onClick={() => setAuditsOpen(true)}>View all</button>
-            </div>
-            <div className="ph-audit-list">
-              {auditTicker.slice(0, 5).map((audit) => (
-                <button key={audit.eventId} onClick={() => setAuditsOpen(true)}>
-                  <span>{new Date(audit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  <strong>{audit.eventType}</strong>
-                  <em>{audit.summary}</em>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="ph-profile-panel">
-            <div className="ph-avatar">{profile.username.slice(0, 2).toUpperCase()}</div>
-            <strong>{profile.username}</strong>
-            <span>{profile.roleLabel} · level {profile.trainingLevel}</span>
-            <div className="ph-xp-bar">
-              <i style={{ width: `${Math.min(100, profile.xp % 100)}%` }} />
-            </div>
-            <button className="glass-btn" onClick={() => openWindow('settings')}>Workspace settings</button>
-          </div>
-        </section>
+          </section>
+        </div>
       </section>
 
       <div className="ph-command-bar">
