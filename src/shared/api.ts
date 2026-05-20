@@ -49,10 +49,21 @@ export type ModuleCapability = {
   detail?: string;
 };
 
+export type SubredditInstall = {
+  subredditName: string;
+  lastSeenAt: string;
+  iconUrl: string | null;
+  subscribers: number | null;
+};
+
 export type SessionResponse = {
   username: string | null;
   subredditName: string;
   isModerator: boolean;
+  modPermissions: string[];
+  subredditIconUrl: string | null;
+  subredditSubscribers: number | null;
+  installs: SubredditInstall[];
   errors: Array<{ code: AuthErrorCode; message: string }>;
   capabilities: {
     queue: ModuleCapability;

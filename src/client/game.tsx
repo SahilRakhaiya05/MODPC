@@ -92,6 +92,17 @@ const createPreviewSession = (): SessionResponse => ({
   username: 'preview_mod',
   subredditName: 'ProductMods',
   isModerator: true,
+  modPermissions: ['all'],
+  subredditIconUrl: null,
+  subredditSubscribers: 12400,
+  installs: [
+    {
+      subredditName: 'ProductMods',
+      lastSeenAt: new Date().toISOString(),
+      iconUrl: null,
+      subscribers: 12400,
+    },
+  ],
   errors: [],
   capabilities: {
     queue: { enabled: true, live: false, detail: 'Local preview data' },
@@ -261,6 +272,7 @@ export function App() {
       <AccessGate session={session ?? createPreviewSession()}>
         <DesktopShell
           statusData={data}
+          session={session ?? createPreviewSession()}
           triggerToast={addToast}
           onReset={handleReset}
         />

@@ -197,43 +197,64 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       >
         <div className="glass-window-title">
           <span style={{ fontSize: '14px', marginRight: '-4px' }}>{icon}</span>
-          <span style={{ 
-            color: isActive ? '#ffffff' : '#94a3b8',
-            whiteSpace: 'nowrap', 
-            overflow: 'hidden', 
-            textOverflow: 'ellipsis'
-          }}>
+          <span
+            style={{
+              color: isActive ? 'var(--ink)' : 'var(--muted)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             {title}
           </span>
         </div>
 
-        {/* Custom macOS-style circular capsule controls (outlined, color on hover only) */}
+        {/* macOS-style circular controls with always-visible glyphs */}
         <div className="glass-window-controls">
-          <button 
-            className="window-ctrl-dot close" 
-            title="Close" 
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-          />
-          <button 
-            className="window-ctrl-dot minimize" 
+          <button
+            type="button"
+            className="window-ctrl-dot minimize"
+            aria-label={`Minimize ${title}`}
             title="Minimize"
             onClick={(e) => {
               e.stopPropagation();
               if (onMinimize) onMinimize();
               else onClose();
             }}
-          />
-          <button 
-            className="window-ctrl-dot maximize" 
-            title="Maximize"
+          >
+            <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+              <line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="window-ctrl-dot maximize"
+            aria-label={isMaximized ? `Restore ${title}` : `Maximize ${title}`}
+            title={isMaximized ? 'Restore' : 'Maximize'}
             onClick={(e) => {
               e.stopPropagation();
               if (onMaximize) onMaximize();
             }}
-          />
+          >
+            <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+              <rect x="2.4" y="2.4" width="5.2" height="5.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="window-ctrl-dot close"
+            aria-label={`Close ${title}`}
+            title="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+          >
+            <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+              <line x1="2.6" y1="2.6" x2="7.4" y2="7.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1="7.4" y1="2.6" x2="2.6" y2="7.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
 

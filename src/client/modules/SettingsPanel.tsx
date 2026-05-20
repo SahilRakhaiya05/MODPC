@@ -168,9 +168,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               }}
               className="glass-input"
             >
-              <option value="modern">Modern ModDesk</option>
-              <option value="authentic">Retro document OS</option>
-              <option value="high-contrast">High contrast</option>
+              <option value="modern">Modern ModDesk (light)</option>
+              <option value="authentic">Retro document OS (light)</option>
+              <option value="high-contrast">Dark mode</option>
             </select>
           </label>
         </section>

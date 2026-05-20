@@ -17,6 +17,7 @@ import type {
   SaveTemplateRequest,
   SessionResponse,
   Severity,
+  SubredditInstall,
   SubmitAttemptRequest,
   SubmitAttemptResponse,
   TemplateStatus,
@@ -40,8 +41,50 @@ type ModContextState = {
   username: string | null;
   subredditName: string;
   isModerator: boolean;
+  modPermissions: string[];
+  subredditIconUrl: string | null;
+  subredditSubscribers: number | null;
   redisStatus: 'ok' | 'degraded';
 };
+
+const installsKey = (username: string) => `${NS}:installs:${username.toLowerCase()}`;
+
+async function touchInstall(
+  username: string,
+  install: Omit<SubredditInstall, 'lastSeenAt'> & { lastSeenAt?: string }
+): Promise<void> {
+  try {
+    const record: SubredditInstall = {
+      subredditName: install.subredditName,
+      iconUrl: install.iconUrl ?? null,
+      subscribers: install.subscribers ?? null,
+      lastSeenAt: install.lastSeenAt ?? now(),
+    };
+    await redis.hSet(installsKey(username), { [install.subredditName]: JSON.stringify(record) });
+  } catch (err) {
+    console.error('touchInstall failed', err);
+  }
+}
+
+async function getInstalls(username: string): Promise<SubredditInstall[]> {
+  try {
+    const raw = await redis.hGetAll(installsKey(username));
+    if (!raw) return [];
+    const entries: SubredditInstall[] = [];
+    for (const value of Object.values(raw)) {
+      try {
+        entries.push(JSON.parse(value as string) as SubredditInstall);
+      } catch {
+        /* skip malformed */
+      }
+    }
+    entries.sort((a, b) => (a.lastSeenAt < b.lastSeenAt ? 1 : -1));
+    return entries;
+  } catch (err) {
+    console.error('getInstalls failed', err);
+    return [];
+  }
+}
 
 type RedditThingId = `t1_${string}` | `t3_${string}`;
 
@@ -517,18 +560,48 @@ async function getModContext(): Promise<ModContextState> {
   const username = (await reddit.getCurrentUsername()) ?? null;
   const subredditName = context.subredditName ?? 'testsubreddit';
   let isModerator = false;
+  let modPermissions: string[] = [];
+  let subredditIconUrl: string | null = null;
+  let subredditSubscribers: number | null = null;
   try {
     if (username) {
       const mods = await reddit.getModerators({ subredditName, limit: 100 }).all();
-      isModerator = mods.some((mod) => mod.username.toLowerCase() === username.toLowerCase());
+      const me = mods.find((mod) => mod.username.toLowerCase() === username.toLowerCase());
+      isModerator = Boolean(me);
+      if (me) {
+        const perms = (me as { modPermissions?: string[] | string }).modPermissions;
+        if (Array.isArray(perms)) modPermissions = perms;
+        else if (typeof perms === 'string') modPermissions = perms.split(/[,\s]+/).filter(Boolean);
+      }
     }
   } catch {
     isModerator = false;
+  }
+  try {
+    const subreddit = await reddit.getSubredditByName(subredditName);
+    const subAny = subreddit as unknown as {
+      numberOfSubscribers?: number;
+      subscribersCount?: number;
+      iconImg?: string;
+      communityIcon?: string;
+    };
+    subredditSubscribers =
+      typeof subAny.numberOfSubscribers === 'number'
+        ? subAny.numberOfSubscribers
+        : typeof subAny.subscribersCount === 'number'
+          ? subAny.subscribersCount
+          : null;
+    subredditIconUrl = subAny.communityIcon || subAny.iconImg || null;
+  } catch {
+    /* leave defaults */
   }
   return {
     username,
     subredditName,
     isModerator,
+    modPermissions,
+    subredditIconUrl,
+    subredditSubscribers,
     redisStatus: 'ok' as const,
   };
 }
@@ -545,10 +618,25 @@ async function getSession(): Promise<SessionResponse> {
       message: `u/${modContext.username ?? 'unknown'} is not listed as a moderator of r/${modContext.subredditName}.`,
     });
   }
+
+  let installs: SubredditInstall[] = [];
+  if (modContext.username && modContext.isModerator) {
+    await touchInstall(modContext.username, {
+      subredditName: modContext.subredditName,
+      iconUrl: modContext.subredditIconUrl,
+      subscribers: modContext.subredditSubscribers,
+    });
+    installs = await getInstalls(modContext.username);
+  }
+
   return {
     username: modContext.username,
     subredditName: modContext.subredditName,
     isModerator: modContext.isModerator,
+    modPermissions: modContext.modPermissions,
+    subredditIconUrl: modContext.subredditIconUrl,
+    subredditSubscribers: modContext.subredditSubscribers,
+    installs,
     errors,
     capabilities: baseCapabilities(modContext.isModerator),
   };
@@ -694,6 +782,12 @@ api.get('/health', async (c) => {
 
 api.get('/session', async (c) => {
   return c.json(await getSession());
+});
+
+api.get('/installs', async (c) => {
+  const username = (await reddit.getCurrentUsername()) ?? null;
+  if (!username) return c.json<{ installs: SubredditInstall[] }>({ installs: [] });
+  return c.json<{ installs: SubredditInstall[] }>({ installs: await getInstalls(username) });
 });
 
 api.get('/dashboard', async (c) => {
