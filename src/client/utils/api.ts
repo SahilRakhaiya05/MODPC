@@ -3,7 +3,7 @@ import {
   SystemStatus, AppSettings, ModeratorProfile, TrainingScenario, 
   TrainingAttempt, ConsensusTicket, ResponseTemplate, QueueItem, AuditEvent 
 } from '../types';
-import type { DashboardResponse, LiveInsightResponse, SessionResponse, SubmitAttemptResponse, TicketDetailResponse } from '../../shared/api';
+import type { DashboardResponse, LiveInsightResponse, SessionResponse, SubmitAttemptResponse, SubredditInstall, TicketDetailResponse } from '../../shared/api';
 
 export type LiveModmailThread = {
   id: string;
@@ -38,6 +38,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   async getSession(): Promise<SessionResponse> {
     return await apiFetch<SessionResponse>('/session');
+  },
+
+  async getInstalls(): Promise<{ installs: SubredditInstall[] }> {
+    return await apiFetch<{ installs: SubredditInstall[] }>('/installs');
   },
 
   async getStatus(): Promise<SystemStatus> {

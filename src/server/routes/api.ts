@@ -86,6 +86,47 @@ async function getInstalls(username: string): Promise<SubredditInstall[]> {
   }
 }
 
+function mergeInstalls(...groups: SubredditInstall[][]): SubredditInstall[] {
+  const byName = new Map<string, SubredditInstall>();
+  for (const group of groups) {
+    for (const install of group) {
+      const normalized = install.subredditName.replace(/^r\//i, '');
+      const existing = byName.get(normalized.toLowerCase());
+      byName.set(normalized.toLowerCase(), {
+        subredditName: normalized,
+        iconUrl: install.iconUrl ?? existing?.iconUrl ?? null,
+        subscribers: install.subscribers ?? existing?.subscribers ?? null,
+        lastSeenAt: existing && existing.lastSeenAt > install.lastSeenAt ? existing.lastSeenAt : install.lastSeenAt,
+      });
+    }
+  }
+  return Array.from(byName.values()).sort((a, b) => {
+    if (a.subredditName.toLowerCase() === b.subredditName.toLowerCase()) return 0;
+    return b.lastSeenAt.localeCompare(a.lastSeenAt);
+  });
+}
+
+async function getModeratedCommunities(username: string, current?: SubredditInstall): Promise<SubredditInstall[]> {
+  const stored = await getInstalls(username);
+  const live: SubredditInstall[] = [];
+  try {
+    const modmailSubs = await reddit.modMail.getSubreddits();
+    for (const sub of Object.values(modmailSubs)) {
+      const subredditName = sub.displayName ?? sub.name;
+      if (!subredditName) continue;
+      live.push({
+        subredditName: subredditName.replace(/^r\//i, ''),
+        iconUrl: sub.communityIcon ?? sub.icon ?? null,
+        subscribers: sub.subscribers ?? null,
+        lastSeenAt: sub.lastUpdated ?? now(),
+      });
+    }
+  } catch (err) {
+    console.warn('Modmail subreddit discovery unavailable; using local install history.', err);
+  }
+  return mergeInstalls(current ? [current] : [], live, stored);
+}
+
 type RedditThingId = `t1_${string}` | `t3_${string}`;
 
 class AuthError extends Error {
@@ -569,9 +610,7 @@ async function getModContext(): Promise<ModContextState> {
       const me = mods.find((mod) => mod.username.toLowerCase() === username.toLowerCase());
       isModerator = Boolean(me);
       if (me) {
-        const perms = (me as { modPermissions?: string[] | string }).modPermissions;
-        if (Array.isArray(perms)) modPermissions = perms;
-        else if (typeof perms === 'string') modPermissions = perms.split(/[,\s]+/).filter(Boolean);
+        modPermissions = (me.modPermissions.get(subredditName) ?? []).map((permission) => String(permission));
       }
     }
   } catch {
@@ -621,12 +660,14 @@ async function getSession(): Promise<SessionResponse> {
 
   let installs: SubredditInstall[] = [];
   if (modContext.username && modContext.isModerator) {
-    await touchInstall(modContext.username, {
+    const currentInstall: SubredditInstall = {
       subredditName: modContext.subredditName,
       iconUrl: modContext.subredditIconUrl,
       subscribers: modContext.subredditSubscribers,
-    });
-    installs = await getInstalls(modContext.username);
+      lastSeenAt: now(),
+    };
+    await touchInstall(modContext.username, currentInstall);
+    installs = await getModeratedCommunities(modContext.username, currentInstall);
   }
 
   return {
@@ -785,9 +826,21 @@ api.get('/session', async (c) => {
 });
 
 api.get('/installs', async (c) => {
-  const username = (await reddit.getCurrentUsername()) ?? null;
+  const modContext = await getModContext();
+  const username = modContext.username;
   if (!username) return c.json<{ installs: SubredditInstall[] }>({ installs: [] });
-  return c.json<{ installs: SubredditInstall[] }>({ installs: await getInstalls(username) });
+  const currentInstall: SubredditInstall = {
+    subredditName: modContext.subredditName,
+    iconUrl: modContext.subredditIconUrl,
+    subscribers: modContext.subredditSubscribers,
+    lastSeenAt: now(),
+  };
+  if (modContext.isModerator) {
+    await touchInstall(username, currentInstall);
+  }
+  return c.json<{ installs: SubredditInstall[] }>({
+    installs: await getModeratedCommunities(username, modContext.isModerator ? currentInstall : undefined),
+  });
 });
 
 api.get('/dashboard', async (c) => {

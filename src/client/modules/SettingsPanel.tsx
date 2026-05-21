@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import { navigateTo } from '@devvit/web/client';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { AppSettings, ModeratorProfile } from '../types';
+import type { SessionResponse, SubredditInstall } from '../../shared/api';
 import { api } from '../utils/api';
 
 type SettingsPanelProps = {
   settings: AppSettings;
   onSettingsUpdate: (settings: AppSettings) => void;
   profile: ModeratorProfile;
+  session?: SessionResponse | undefined;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error') => void;
   onReset: () => void;
 };
@@ -14,10 +17,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   settings,
   onSettingsUpdate,
   profile,
+  session,
   triggerToast,
   onReset,
 }) => {
-  const [subredditName, setSubredditName] = useState(settings.subredditName);
+  const currentCommunity = (session?.subredditName ?? settings.subredditName).replace(/^r\//i, '');
+  const [subredditName, setSubredditName] = useState(currentCommunity);
+  const [communities, setCommunities] = useState<SubredditInstall[]>(session?.installs ?? []);
   const [consensusThresholdMode, setConsensusThresholdMode] = useState(settings.consensusThresholdMode);
   const [consensusFixedCount, setConsensusFixedCount] = useState(settings.consensusFixedCount);
   const [trainingRequiredLevel, setTrainingRequiredLevel] = useState(settings.trainingRequiredLevel);
@@ -25,9 +31,53 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const selectedCommunity = subredditName.replace(/^r\//i, '');
+  const selectedIsCurrent = selectedCommunity.toLowerCase() === currentCommunity.toLowerCase();
+
+  const sortedCommunities = useMemo(() => {
+    const byName = new Map<string, SubredditInstall>();
+    for (const community of communities) {
+      const normalized = community.subredditName.replace(/^r\//i, '');
+      byName.set(normalized.toLowerCase(), { ...community, subredditName: normalized });
+    }
+    if (!byName.has(currentCommunity.toLowerCase())) {
+      byName.set(currentCommunity.toLowerCase(), {
+        subredditName: currentCommunity,
+        iconUrl: session?.subredditIconUrl ?? null,
+        subscribers: session?.subredditSubscribers ?? null,
+        lastSeenAt: new Date().toISOString(),
+      });
+    }
+    return Array.from(byName.values()).sort((a, b) => {
+      if (a.subredditName.toLowerCase() === currentCommunity.toLowerCase()) return -1;
+      if (b.subredditName.toLowerCase() === currentCommunity.toLowerCase()) return 1;
+      return a.subredditName.localeCompare(b.subredditName);
+    });
+  }, [communities, currentCommunity, session?.subredditIconUrl, session?.subredditSubscribers]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCommunities = async () => {
+      try {
+        const res = await api.getInstalls();
+        if (isMounted) setCommunities(res.installs);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    void loadCommunities();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!selectedIsCurrent) {
+      triggerToast(`Open ModDesk from r/${selectedCommunity} to load that community's live tools.`, 'warning');
+      navigateTo(`https://www.reddit.com/r/${selectedCommunity}/about/modqueue`);
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await api.updateSettings({
@@ -48,6 +98,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLoadCommunity = () => {
+    if (selectedIsCurrent) {
+      triggerToast(`Loaded live tools for r/${currentCommunity}.`, 'success');
+      onReset();
+      return;
+    }
+    triggerToast(`Opening r/${selectedCommunity}. Launch ModDesk there to work that community.`, 'success');
+    navigateTo(`https://www.reddit.com/r/${selectedCommunity}/about/modqueue`);
   };
 
   const handleResetExecute = async () => {
@@ -78,7 +138,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div>
           <span className="module-eyebrow">Settings system</span>
           <h3>Community configuration</h3>
-          <p>Subreddit-scoped controls for consensus, training, display, and local ModDesk data.</p>
+          <p>Pick a moderator community, verify live capability, and tune the workspace without oversized panels or cramped controls.</p>
         </div>
         <div className="settings-session">
           <span>Operator</span>
@@ -88,21 +148,74 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       <form className="settings-form" onSubmit={handleSubmit}>
         <section className="settings-card">
-          <span className="module-eyebrow">Subreddit scope</span>
-          <div className="settings-fields">
+          <div className="settings-card-head">
+            <span className="module-eyebrow">Community base</span>
+            <button type="button" className="glass-btn" onClick={handleLoadCommunity}>
+              {selectedIsCurrent ? 'Reload tools' : 'Open community'}
+            </button>
+          </div>
+          <div className="settings-community-picker">
             <label>
-              <span>Subreddit bound name</span>
-              <input
-                type="text"
-                value={subredditName}
+              <span>Moderator community</span>
+              <select
+                value={selectedCommunity}
                 onChange={(event) => setSubredditName(event.target.value)}
                 className="glass-input"
-                placeholder="e.g. r/AskModerators"
-              />
+              >
+                {sortedCommunities.map((community) => (
+                  <option key={community.subredditName} value={community.subredditName}>
+                    r/{community.subredditName}
+                    {community.subscribers ? ` · ${community.subscribers.toLocaleString()} members` : ''}
+                  </option>
+                ))}
+              </select>
             </label>
+            <div className="settings-community-status">
+              <strong>{selectedIsCurrent ? 'Live tools loaded' : 'Open from community'}</strong>
+              <span>
+                {selectedIsCurrent
+                  ? `Queue, modmail, automod, users, and logs are scoped to r/${currentCommunity}.`
+                  : `Reddit runs Devvit mod tools inside the selected subreddit install. Open r/${selectedCommunity} to work it live.`}
+              </span>
+            </div>
+          </div>
+          <div className="settings-community-list" aria-label="Moderator communities">
+            {sortedCommunities.map((community) => {
+              const isSelected = community.subredditName.toLowerCase() === selectedCommunity.toLowerCase();
+              const isCurrent = community.subredditName.toLowerCase() === currentCommunity.toLowerCase();
+              return (
+                <button
+                  key={community.subredditName}
+                  type="button"
+                  className={isSelected ? 'active' : ''}
+                  onClick={() => setSubredditName(community.subredditName)}
+                >
+                  <span className="settings-community-avatar">
+                    {community.iconUrl ? <img src={community.iconUrl} alt="" /> : community.subredditName.slice(0, 2).toUpperCase()}
+                  </span>
+                  <strong>r/{community.subredditName}</strong>
+                  <em>{isCurrent ? 'current install' : 'moderated'}</em>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="settings-card compact">
+          <span className="module-eyebrow">Operator</span>
+          <div className="settings-fields">
             <label>
               <span>Active shift operator</span>
               <input type="text" value={profile.username} disabled className="glass-input" />
+            </label>
+            <label>
+              <span>Permission set</span>
+              <input
+                type="text"
+                value={session?.modPermissions.length ? session.modPermissions.join(', ') : 'standard moderator'}
+                disabled
+                className="glass-input"
+              />
             </label>
           </div>
         </section>

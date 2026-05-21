@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-interface RetroWindowProps {
+type RetroWindowProps = {
   id: string;
   title: string;
   icon: string;
@@ -15,7 +15,7 @@ interface RetroWindowProps {
   isMaximized?: boolean;
   onMinimize?: () => void;
   onMaximize?: () => void;
-}
+};
 
 type WindowSize = {
   width: number;
@@ -23,8 +23,34 @@ type WindowSize = {
 };
 
 const parseCssSize = (value: string, fallback: number) => {
+  if (value.endsWith('%') || value.startsWith('calc(')) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const viewportSize = () => ({
+  width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+  height: typeof window === 'undefined' ? 760 : window.innerHeight,
+});
+
+const clampSize = (size: WindowSize, position: { x: number; y: number }): WindowSize => {
+  const viewport = viewportSize();
+  const maxWidth = Math.max(320, viewport.width - position.x - 12);
+  const maxHeight = Math.max(300, viewport.height - position.y - 58);
+  return {
+    width: Math.max(320, Math.min(size.width, maxWidth, viewport.width - 24)),
+    height: Math.max(300, Math.min(size.height, maxHeight, viewport.height - 82)),
+  };
+};
+
+const clampPosition = (position: { x: number; y: number }, width: number) => {
+  const viewport = viewportSize();
+  const maxX = Math.max(0, viewport.width - Math.min(180, width));
+  const maxY = Math.max(0, viewport.height - 80);
+  return {
+    x: Math.max(-Math.min(80, width - 160), Math.min(maxX, position.x)),
+    y: Math.max(44, Math.min(maxY, position.y)),
+  };
 };
 
 export const RetroWindow: React.FC<RetroWindowProps> = ({
@@ -43,14 +69,23 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   onMinimize,
   onMaximize
 }) => {
-  const [position, setPosition] = useState(() => ({
-    x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
-    y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
-  }));
-  const [size, setSize] = useState<WindowSize>(() => ({
-    width: parseCssSize(defaultSize.width, 720),
-    height: parseCssSize(defaultSize.height, 520),
-  }));
+  const [position, setPosition] = useState(() => {
+    const initialWidth = parseCssSize(defaultSize.width, 720);
+    return clampPosition({
+      x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
+      y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
+    }, initialWidth);
+  });
+  const [size, setSize] = useState<WindowSize>(() => {
+    const initialPosition = {
+      x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
+      y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
+    };
+    return clampSize({
+      width: parseCssSize(defaultSize.width, 720),
+      height: parseCssSize(defaultSize.height, 520),
+    }, initialPosition);
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -62,7 +97,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     if (e.button !== 0) return;
     
     // Avoid dragging if click hits buttons
-    if ((e.target as HTMLElement).closest('.window-ctrl-dot')) return;
+    if (e.target instanceof HTMLElement && e.target.closest('.window-ctrl-dot')) return;
     if (isMaximized) return; // Disable drag when maximized
 
     onFocus();
@@ -93,16 +128,10 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       if (!isDragging) return;
       
       // Calculate bounded coordinates
-      let newX = e.clientX - dragStart.current.x;
-      let newY = e.clientY - dragStart.current.y;
+      const newX = e.clientX - dragStart.current.x;
+      const newY = e.clientY - dragStart.current.y;
       
-      // Keep the titlebar reachable and most of the window inside the viewport.
-      const maxX = Math.max(0, window.innerWidth - Math.min(180, size.width));
-      const maxY = Math.max(0, window.innerHeight - 80);
-      newX = Math.max(-Math.min(80, size.width - 160), Math.min(maxX, newX));
-      newY = Math.max(44, Math.min(maxY, newY));
-
-      setPosition({ x: newX, y: newY });
+      setPosition(clampPosition({ x: newX, y: newY }, size.width));
     };
 
     const handleMouseUp = () => {
@@ -127,12 +156,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       if (!isResizing) return;
       const nextWidth = resizeStart.current.width + e.clientX - resizeStart.current.x;
       const nextHeight = resizeStart.current.height + e.clientY - resizeStart.current.y;
-      const maxWidth = Math.max(320, window.innerWidth - position.x - 12);
-      const maxHeight = Math.max(300, window.innerHeight - position.y - 58);
-      setSize({
-        width: Math.max(320, Math.min(maxWidth, nextWidth)),
-        height: Math.max(300, Math.min(maxHeight, nextHeight)),
-      });
+      setSize(clampSize({ width: nextWidth, height: nextHeight }, position));
     };
 
     const handleMouseUp = () => {
@@ -148,22 +172,18 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizing, position.x, position.y]);
+  }, [isResizing, position]);
 
   useEffect(() => {
     const handleViewportResize = () => {
       setPosition((current) => ({
-        x: Math.max(0, Math.min(current.x, window.innerWidth - 180)),
-        y: Math.max(44, Math.min(current.y, window.innerHeight - 80)),
+        ...clampPosition(current, size.width),
       }));
-      setSize((current) => ({
-        width: Math.max(320, Math.min(current.width, window.innerWidth - 24)),
-        height: Math.max(300, Math.min(current.height, window.innerHeight - 98)),
-      }));
+      setSize((current) => clampSize(current, position));
     };
     window.addEventListener('resize', handleViewportResize);
     return () => window.removeEventListener('resize', handleViewportResize);
-  }, []);
+  }, [position, size.width]);
 
   if (!isOpen) return null;
 

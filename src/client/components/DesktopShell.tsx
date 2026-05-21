@@ -94,10 +94,10 @@ const initialWindows: Record<WindowId, WindowInfo> = {
   modmail: makeWindow('Mod Mail', 'MAIL', '1080px', '650px', 110, 82),
   automod: makeWindow('Automod YAML', 'YAML', '860px', '620px', 132, 94),
   insights: makeWindow('Insights Graph', 'GRAPH', '900px', '620px', 148, 104),
-  typewriter: makeWindow('Saved Responses', 'MD', '780px', '560px', 152, 110),
+  typewriter: makeWindow('Saved Responses', 'MD', '980px', '640px', 152, 88),
   modlog: makeWindow('Modlog Feed', 'LOG', '860px', '580px', 166, 108),
   usergrid: makeWindow('Users DB', 'DB', '900px', '620px', 118, 90),
-  settings: makeWindow('Settings System', 'SYS', '680px', '540px', 210, 126),
+  settings: makeWindow('Settings System', 'SYS', '780px', '640px', 180, 82),
   consensus: makeWindow('Consensus Desk', 'VOTE', '800px', '580px', 118, 96),
   academy: makeWindow('Mod Academy', 'EDU', '780px', '560px', 84, 82),
 };
@@ -404,6 +404,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           settings={settings}
           onSettingsUpdate={setSettings}
           profile={profile}
+          session={session}
           triggerToast={triggerToast}
           onReset={onReset}
         />

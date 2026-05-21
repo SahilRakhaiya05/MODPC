@@ -99,8 +99,9 @@ export const Typewriter: React.FC<TypewriterProps> = ({ triggerToast }) => {
 
   // Markdown Helper Injection Function
   const injectMarkdown = (syntaxBefore: string, syntaxAfter: string = '') => {
-    const textarea = document.getElementById('typewriter-textarea') as HTMLTextAreaElement;
-    if (!textarea) return;
+    const node = document.getElementById('typewriter-textarea');
+    if (!(node instanceof HTMLTextAreaElement)) return;
+    const textarea = node;
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
@@ -162,12 +163,13 @@ export const Typewriter: React.FC<TypewriterProps> = ({ triggerToast }) => {
   };
 
   return (
-    <div style={{ display: 'flex', gap: '16px', height: '100%', minHeight: 0, fontFamily: 'var(--font-body)' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', height: '100%', minHeight: 0, fontFamily: 'var(--font-body)' }}>
       {/* Sidebar List */}
       <div 
         className="glass-panel" 
         style={{ 
-          width: '240px', 
+          flex: '1 1 180px',
+          maxWidth: '220px',
           display: 'flex', 
           flexDirection: 'column', 
           minHeight: 0, 
@@ -252,7 +254,8 @@ export const Typewriter: React.FC<TypewriterProps> = ({ triggerToast }) => {
         style={{ 
           flexGrow: 1, 
           display: 'flex', 
-          gap: '16px', 
+          gap: '12px',
+          flexWrap: 'wrap',
           minWidth: 0, 
           height: '100%' 
         }}
@@ -262,8 +265,8 @@ export const Typewriter: React.FC<TypewriterProps> = ({ triggerToast }) => {
           onSubmit={handleSave} 
           className="glass-panel"
           style={{ 
-            flex: '1 1 50%', 
-            padding: '20px', 
+            flex: '1 1 300px',
+            padding: '14px',
             display: 'flex', 
             flexDirection: 'column', 
             gap: '12px', 
@@ -442,8 +445,8 @@ export const Typewriter: React.FC<TypewriterProps> = ({ triggerToast }) => {
         <div 
           className="glass-panel"
           style={{ 
-            flex: '1 1 50%', 
-            padding: '20px', 
+            flex: '1 1 260px',
+            padding: '14px',
             display: 'flex', 
             flexDirection: 'column', 
             backgroundColor: 'var(--glass-bg)', 
