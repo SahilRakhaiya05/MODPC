@@ -244,6 +244,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [now, setNow] = useState(() => new Date());
   const [liveRules, setLiveRules] = useState<Array<{ shortName: string; description?: string; priority?: number }>>([]);
   const [liveModlog, setLiveModlog] = useState<Array<{ id: string; type: string; moderatorName?: string; details?: string; description?: string; createdAt: string; target?: { author?: string; title?: string } }>>([]);
+  const [liveEvents, setLiveEvents] = useState<Array<{ id: string; kind: string; createdAt: string; actor?: string | null; summary: string }>>([]);
 
   useEffect(() => {
     const themeAttr = settings.themeMode === 'high-contrast' ? 'dark' : 'posthog';
@@ -326,18 +327,20 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   useEffect(() => {
     const fetchWorkbench = async () => {
       try {
-        const [rulesResult, modlogResult] = await Promise.allSettled([
+        const [rulesResult, modlogResult, eventsResult] = await Promise.allSettled([
           api.getLiveRules(),
           api.getLiveModlog(),
+          api.getLiveEvents(),
         ]);
         if (rulesResult.status === 'fulfilled') setLiveRules(rulesResult.value.rules ?? []);
         if (modlogResult.status === 'fulfilled') setLiveModlog((modlogResult.value.logs ?? []).slice(0, 6));
+        if (eventsResult.status === 'fulfilled') setLiveEvents((eventsResult.value.events ?? []).slice(0, 8));
       } catch (err) {
         console.error(err);
       }
     };
     void fetchWorkbench();
-    const interval = window.setInterval(() => void fetchWorkbench(), 20000);
+    const interval = window.setInterval(() => void fetchWorkbench(), 12000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -418,7 +421,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     <main className="ph-os-shell">
       <header className="ph-os-menubar">
         <div className="ph-os-menu-left">
-          <button className="ph-mini-logo" onClick={() => openWindow('queue')} aria-label="Open needs review">
+          <button
+            className="ph-mini-logo"
+            onClick={() => openWindow('home')}
+            title="ModDesk home (Ctrl+H)"
+            aria-label="Open ModDesk home"
+          >
             <span />
             <span />
             <span />
@@ -443,7 +451,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <NotificationDot count={auditTicker.length} tone="info" label={`${auditTicker.length} audit events`} />
           </button>
           {session && (
-            <IdentityChip session={session} onOpenSettings={() => openWindow('settings')} />
+            <IdentityChip
+              session={session}
+              onOpenSettings={() => openWindow('settings')}
+              onCopyToast={(msg) => triggerToast(msg, 'success')}
+            />
           )}
         </div>
       </header>
@@ -649,6 +661,26 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </ol>
 
                 <div className="ph-panel-title">
+                  <span>Live triggers</span>
+                  <button onClick={() => openWindow('modlog')}>Mod log ↗</button>
+                </div>
+                <div className="moddesk-activity-mini">
+                  {liveEvents.length === 0 ? (
+                    <p className="moddesk-empty">No live trigger events yet. Reports, mod actions, and modmail will stream in here as Devvit fires them.</p>
+                  ) : (
+                    liveEvents.map((event) => (
+                      <button key={event.id} onClick={() => openWindow(event.kind === 'mod-mail' ? 'modmail' : event.kind.includes('report') ? 'queue' : 'modlog')}>
+                        <strong>{event.kind.replace('-', ' ')}</strong>
+                        <span>
+                          {event.actor ? `u/${event.actor} · ` : ''}
+                          {event.summary}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="ph-panel-title">
                   <span>ModDesk audit</span>
                   <button onClick={() => setAuditsOpen(true)}>Full feed ↗</button>
                 </div>
@@ -671,21 +703,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       </section>
       )}
 
-      {/* When home is closed/minimized, a single floating launcher tile lets you re-open it. */}
-      {(!windows.home.isOpen || windows.home.isMinimized) && (
-        <button
-          type="button"
-          className="ph-home-relauncher"
-          title="Open ModDesk home (Ctrl+H)"
-          aria-label="Open ModDesk home"
-          onClick={() => {
-            setWindows((prev) => ({ ...prev, home: { ...prev.home, isOpen: true, isMinimized: false } }));
-            setActiveWindow('home');
-          }}
-        >
-          MD
-        </button>
-      )}
+      {/* The top-menubar logo (the three skewed bars) re-opens the home window when closed. */}
 
       {windowIds.map((item) => {
         const win = windows[item];

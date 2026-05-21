@@ -36,7 +36,22 @@
     ]
   },
   "triggers": {
-    "onAppInstall": "/internal/triggers/on-app-install"
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onPostReport": "/internal/triggers/on-post-report",
+    "onCommentReport": "/internal/triggers/on-comment-report",
+    "onModAction": "/internal/triggers/on-mod-action",
+    "onModMail": "/internal/triggers/on-mod-mail"
+  },
+  "scheduler": {
+    "tasks": {
+      "moddesk-refresh-live-stats": {
+        "endpoint": "/internal/scheduler/refresh-live-stats",
+        "cron": "*/5 * * * *"
+      },
+      "moddesk-queued-action": {
+        "endpoint": "/internal/scheduler/queued-action"
+      }
+    }
   },
   "scripts": {
     "dev": "vite build --watch",

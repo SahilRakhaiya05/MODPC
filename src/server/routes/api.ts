@@ -2018,3 +2018,89 @@ api.get('/live/insights', async (c) => {
 
   return c.json<LiveInsightResponse>(response);
 });
+
+// ----- Live trigger events (written by /internal/triggers/* handlers) -----
+
+type LiveTriggerEvent = {
+  id: string;
+  kind: 'post-report' | 'comment-report' | 'mod-action' | 'mod-mail' | 'app-install';
+  createdAt: string;
+  actor?: string | null;
+  target?: string | null;
+  summary: string;
+};
+
+api.get('/live/events', async (c) => {
+  const modContext = await requireModerator();
+  try {
+    const indexKey = `${NS}:${modContext.subredditName}:live-events:index`;
+    const raw = await redis.get(indexKey);
+    const ids: string[] = raw ? JSON.parse(raw) : [];
+    const slice = ids.slice(0, 20);
+    const events: LiveTriggerEvent[] = [];
+    for (const eventId of slice) {
+      const value = await redis.get(`${NS}:${modContext.subredditName}:live-events:${eventId}`);
+      if (!value) continue;
+      try {
+        events.push(JSON.parse(value) as LiveTriggerEvent);
+      } catch {
+        /* skip malformed */
+      }
+    }
+    return c.json({ events });
+  } catch (error) {
+    console.error('GET /api/live/events failed', error);
+    return c.json({ events: [] satisfies LiveTriggerEvent[] });
+  }
+});
+
+// ----- Removal reasons (subreddit.getRemovalReasons) -----
+
+api.get('/live/removal-reasons', async (c) => {
+  const modContext = await requireModerator();
+  try {
+    const reasons = await reddit.getSubredditRemovalReasons(modContext.subredditName);
+    return c.json({
+      reasons: reasons.map((reason: { id?: string; title?: string; message?: string }) => ({
+        id: reason.id ?? '',
+        title: reason.title ?? '',
+        message: reason.message ?? '',
+      })),
+    });
+  } catch (error) {
+    console.error('GET /api/live/removal-reasons failed', error);
+    return c.json({ reasons: [] });
+  }
+});
+
+// ----- User profile lookup (reddit.getUserByUsername) -----
+
+api.get('/live/user/:username', async (c) => {
+  await requireModerator();
+  const username = c.req.param('username');
+  if (!username) {
+    return c.json({ status: 'error', message: 'Missing username' } satisfies ApiError, 400);
+  }
+  try {
+    const user = await reddit.getUserByUsername(username);
+    if (!user) {
+      return c.json({ user: null, status: 'not-found' });
+    }
+    return c.json({
+      user: {
+        username: user.username,
+        id: user.id,
+        createdAt: user.createdAt.toISOString(),
+        linkKarma: user.linkKarma,
+        commentKarma: user.commentKarma,
+        isAdmin: user.isAdmin,
+        nsfw: user.nsfw,
+        hasVerifiedEmail: user.hasVerifiedEmail,
+        permalink: user.permalink,
+      },
+    });
+  } catch (error) {
+    console.error(`GET /api/live/user/${username} failed`, error);
+    return c.json({ user: null, status: 'error', message: String(error) }, 500);
+  }
+});

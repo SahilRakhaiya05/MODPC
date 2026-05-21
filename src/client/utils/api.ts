@@ -586,5 +586,20 @@ export const api = {
 
   async getLiveInsights(): Promise<LiveInsightResponse> {
     return await apiFetch<LiveInsightResponse>('/live/insights');
-  }
+  },
+
+  async getLiveEvents(): Promise<{ events: Array<{ id: string; kind: string; createdAt: string; actor?: string | null; target?: string | null; summary: string }> }> {
+    return await apiFetch('/live/events');
+  },
+
+  async getRemovalReasons(): Promise<{ reasons: Array<{ id: string; title: string; message: string }> }> {
+    return await apiFetch('/live/removal-reasons');
+  },
+
+  async lookupUser(username: string): Promise<{
+    user: null | { username: string; id: string; createdAt: string; linkKarma: number; commentKarma: number; isAdmin: boolean; nsfw: boolean; hasVerifiedEmail: boolean; permalink: string };
+    status?: string;
+  }> {
+    return await apiFetch(`/live/user/${encodeURIComponent(username)}`);
+  },
 };

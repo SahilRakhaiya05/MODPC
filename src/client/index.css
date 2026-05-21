@@ -678,6 +678,45 @@ button {
   background: var(--orange-dark);
 }
 
+.identity-menu-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.identity-menu-copy-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.identity-menu-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--orange);
+  background: rgba(244, 93, 34, 0.06);
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.identity-menu-item.primary span {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .identity-menu-note {
+  background: rgba(255, 122, 61, 0.1);
+  color: var(--ink);
+}
+
 .identity-menu-foot {
   margin: 0;
   font-size: 10.5px;
@@ -2709,24 +2748,32 @@ button {
   background: #fffdf7 !important;
 }
 
-.glass-window > div:last-child {
-  background: #f4eadc !important;
-  color: var(--muted) !important;
-  border-top: 1px solid var(--line-soft) !important;
+/* Footer status bar removed — was visual noise (SECURE TECHNICAL SUBPROCESS) */
+
+.window-resize-edge {
+  background: transparent;
 }
 
-.window-resize-handle {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
-  width: 22px;
-  height: 22px;
-  border: 0;
+.window-resize-edge.edge-se {
   background:
     linear-gradient(135deg, transparent 0 45%, rgba(24, 17, 12, 0.34) 45% 52%, transparent 52%),
     linear-gradient(135deg, transparent 0 62%, rgba(24, 17, 12, 0.34) 62% 69%, transparent 69%);
-  cursor: nwse-resize;
+}
+
+[data-theme="dark"] .window-resize-edge.edge-se {
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(246, 239, 226, 0.42) 45% 52%, transparent 52%),
+    linear-gradient(135deg, transparent 0 62%, rgba(246, 239, 226, 0.42) 62% 69%, transparent 69%);
+}
+
+.glass-window.is-resizing,
+.glass-window.is-dragging {
+  user-select: none;
+}
+
+.glass-window.is-resizing .glass-window-content,
+.glass-window.is-dragging .glass-window-content {
+  pointer-events: none;
 }
 
 .moddesk-command-center {
@@ -3186,6 +3233,207 @@ button {
   transform: translate(-1px, -1px);
   box-shadow: 7px 7px 0 rgba(24, 17, 12, 0.32);
   background: var(--orange-dark);
+}
+
+/* Boot + loading + error screens — clean, readable, theme-aware */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(244, 93, 34, 0.08), transparent 60%),
+    radial-gradient(circle at 80% 80%, rgba(57, 120, 232, 0.06), transparent 60%),
+    var(--page);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.boot-screen-card {
+  width: 100%;
+  max-width: 540px;
+  display: grid;
+  gap: 24px;
+  padding: 28px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper-strong);
+  box-shadow: 8px 8px 0 rgba(24, 17, 12, 0.18), var(--shadow);
+}
+
+.boot-screen-card--minimal {
+  max-width: 420px;
+}
+
+.boot-screen-card--error header h1 {
+  color: var(--red);
+}
+
+.boot-screen-card header {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.boot-screen-logo {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--orange);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.boot-screen-logo--error {
+  background: var(--red);
+}
+
+.boot-screen-card header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.boot-screen-card header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.boot-screen-log {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fbf4e6;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.boot-screen-line {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  color: var(--ink);
+}
+
+.boot-screen-line.tone-ok > span:first-child { color: var(--green); }
+.boot-screen-line.tone-info > span:first-child { color: var(--blue); }
+.boot-screen-line.tone-warn > span:first-child { color: var(--yellow); }
+.boot-screen-line.tone-pending > span:first-child { color: var(--muted); }
+.boot-screen-line.tone-pending { color: var(--muted); animation: bootPulse 1.2s infinite; }
+
+@keyframes bootPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.boot-screen-progress {
+  width: 100%;
+  height: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(24, 17, 12, 0.08);
+}
+
+.boot-screen-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--orange), var(--orange-dark));
+  transition: width 0.2s ease;
+}
+
+.boot-screen-progress-row {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.boot-screen-skip {
+  justify-self: end;
+  margin-top: 4px;
+  padding: 6px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.boot-screen-skip:hover {
+  background: var(--paper);
+}
+
+.boot-screen-card footer {
+  display: grid;
+  gap: 4px;
+}
+
+.boot-screen-help {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.boot-screen-spinner {
+  justify-self: center;
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(24, 17, 12, 0.12);
+  border-top-color: var(--orange);
+  border-radius: 50%;
+  animation: bootSpin 0.7s linear infinite;
+}
+
+@keyframes bootSpin {
+  to { transform: rotate(360deg); }
+}
+
+[data-theme="dark"] .boot-screen-card {
+  background: var(--paper);
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.5), var(--shadow);
+}
+
+[data-theme="dark"] .boot-screen-log {
+  background: #14120e;
+}
+
+[data-theme="dark"] .boot-screen-help {
+  background: #14120e;
+}
+
+[data-theme="dark"] .boot-screen-skip {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .boot-screen-skip:hover {
+  background: rgba(246, 239, 226, 0.08);
 }
 
 .system-toast {

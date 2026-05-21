@@ -4,6 +4,7 @@ import type { SessionResponse, SubredditInstall } from '../../shared/api';
 type Props = {
   session: SessionResponse;
   onOpenSettings: () => void;
+  onCopyToast?: (message: string) => void;
 };
 
 const formatSubs = (n: number | null | undefined): string => {
@@ -13,8 +14,12 @@ const formatSubs = (n: number | null | undefined): string => {
   return String(n);
 };
 
-export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings }) => {
+const subredditUrl = (name: string) => `https://www.reddit.com/r/${name}/about/apps/`;
+const INSTALL_URL = 'https://developers.reddit.com/apps';
+
+export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings, onCopyToast }) => {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -37,10 +42,28 @@ export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings }) => {
   const others = session.installs.filter((entry) => entry.subredditName !== session.subredditName);
   const subsLabel = formatSubs(session.subredditSubscribers);
 
-  const switchTo = (install: SubredditInstall) => {
-    const url = `https://www.reddit.com/r/${install.subredditName}/about/apps/`;
-    window.open(url, '_blank', 'noopener');
-    setOpen(false);
+  const copyUrl = async (url: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(url);
+      onCopyToast?.(`${label} URL copied`);
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      // Fallback: select-and-copy via a temporary input
+      const tmp = document.createElement('input');
+      tmp.value = url;
+      document.body.appendChild(tmp);
+      tmp.select();
+      try {
+        document.execCommand('copy');
+        setCopied(url);
+        onCopyToast?.(`${label} URL copied`);
+        setTimeout(() => setCopied(null), 1800);
+      } catch {
+        onCopyToast?.('Copy failed — select the URL manually.');
+      }
+      document.body.removeChild(tmp);
+    }
   };
 
   return (
@@ -88,31 +111,40 @@ export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings }) => {
           {others.length > 0 && (
             <div className="identity-menu-section">
               <span className="identity-menu-label">Switch subreddit ({others.length})</span>
-              {others.map((install) => (
-                <button
-                  key={install.subredditName}
-                  type="button"
-                  className="identity-menu-item"
-                  onClick={() => switchTo(install)}
-                  role="menuitem"
-                >
-                  <span>r/{install.subredditName}</span>
-                  {formatSubs(install.subscribers) && <em>{formatSubs(install.subscribers)} members</em>}
-                </button>
+              {others.map((install: SubredditInstall) => (
+                <div key={install.subredditName} className="identity-menu-row">
+                  <button
+                    type="button"
+                    className="identity-menu-item"
+                    onClick={() => copyUrl(subredditUrl(install.subredditName), `r/${install.subredditName}`)}
+                    role="menuitem"
+                  >
+                    <span>r/{install.subredditName}</span>
+                    {formatSubs(install.subscribers) && <em>{formatSubs(install.subscribers)} members</em>}
+                  </button>
+                  <span className="identity-menu-copy-hint">
+                    {copied === subredditUrl(install.subredditName) ? 'Copied ✓' : 'Copy URL'}
+                  </span>
+                </div>
               ))}
             </div>
           )}
 
           <div className="identity-menu-section">
-            <a
+            <span className="identity-menu-label">Install on another subreddit</span>
+            <p className="identity-menu-note">
+              The Devvit webview can't open new tabs. Copy the URL and paste it into a Reddit tab to install ModDesk on a community you moderate.
+            </p>
+            <button
+              type="button"
               className="identity-menu-item primary"
-              href="https://developers.reddit.com/apps"
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => copyUrl(INSTALL_URL, 'Devvit install page')}
               role="menuitem"
             >
-              Install ModDesk on another subreddit ↗
-            </a>
+              <span>{INSTALL_URL}</span>
+              <em>{copied === INSTALL_URL ? 'Copied ✓' : 'Copy URL'}</em>
+            </button>
+
             <button
               type="button"
               className="identity-menu-item"

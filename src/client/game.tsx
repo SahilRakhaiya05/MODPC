@@ -8,7 +8,6 @@ import { BootScreen } from './components/BootScreen';
 import { DesktopShell } from './components/DesktopShell';
 import { AccessGate } from './components/AccessGate';
 import { SystemToast } from './components/SystemToast';
-import { RetroWindow } from './components/RetroWindow';
 import { api } from './utils/api';
 import type { SystemStatus } from './types';
 import type { SessionResponse } from '../shared/api';
@@ -181,37 +180,18 @@ export function App() {
 
   if (error) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'var(--desktop-bg)',
-        fontFamily: 'var(--font-body)',
-        color: '#fff',
-        padding: '20px'
-      }}>
-        <div style={{ width: '100%', maxWidth: '520px', position: 'relative' }}>
-          <RetroWindow
-            id="error-fallback"
-            title="Access Check Failed"
-            icon="⚠️"
-            isOpen={true}
-            onClose={() => {}}
-            isActive={true}
-            onFocus={() => {}}
-            defaultPosition={{ x: 0, y: 0 }}
-            defaultSize={{ width: '100%', height: '360px' }}
-          >
-            <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>ModDesk OS is private.</h1>
-              <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>{error}</p>
-              <p style={{ fontSize: '12px', lineHeight: '1.5', color: '#94a3b8' }}>
-                Open this app from a subreddit moderator menu or ask a senior moderator to verify permissions.
-              </p>
+      <div className="boot-screen" role="alert">
+        <div className="boot-screen-card boot-screen-card--error">
+          <header>
+            <div className="boot-screen-logo boot-screen-logo--error" aria-hidden="true">!</div>
+            <div>
+              <h1>ModDesk OS is private</h1>
+              <p>{error}</p>
             </div>
-          </RetroWindow>
+          </header>
+          <p className="boot-screen-help">
+            Open this app from a subreddit moderator menu, or ask a senior moderator to verify permissions.
+          </p>
         </div>
       </div>
     );
@@ -223,36 +203,16 @@ export function App() {
 
   if (!data) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'var(--desktop-bg)',
-        fontFamily: 'var(--font-body)',
-        color: '#fff',
-        padding: '20px'
-      }}>
-        <div style={{ width: '100%', maxWidth: '520px', position: 'relative' }}>
-          <RetroWindow
-            id="loading-fallback"
-            title="Loading Operations Room"
-            icon="⚙️"
-            isOpen={true}
-            onClose={() => {}}
-            isActive={true}
-            onFocus={() => {}}
-            defaultPosition={{ x: 0, y: 0 }}
-            defaultSize={{ width: '100%', height: '320px' }}
-          >
-            <div style={{ padding: '20px 0', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <h1 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--accent-gold)' }}>Preparing ModDesk OS</h1>
-              <p style={{ fontSize: '13px', color: 'var(--glass-text-muted)' }}>
-                Loading Redis-backed moderator workspace...
-              </p>
+      <div className="boot-screen" role="status" aria-live="polite">
+        <div className="boot-screen-card boot-screen-card--minimal">
+          <header>
+            <div className="boot-screen-logo" aria-hidden="true">MD</div>
+            <div>
+              <h1>Preparing ModDesk OS</h1>
+              <p>Loading Redis-backed moderator workspace…</p>
             </div>
-          </RetroWindow>
+          </header>
+          <div className="boot-screen-spinner" aria-hidden="true" />
         </div>
       </div>
     );

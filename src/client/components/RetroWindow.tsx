@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 type RetroWindowProps = {
   id: string;
@@ -17,12 +17,17 @@ type RetroWindowProps = {
   onMaximize?: () => void;
 };
 
-type WindowSize = {
-  width: number;
-  height: number;
-};
+type WindowSize = { width: number; height: number };
+type WindowPos = { x: number; y: number };
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-const parseCssSize = (value: string, fallback: number) => {
+const MIN_WIDTH = 320;
+const MIN_HEIGHT = 260;
+const MENUBAR_HEIGHT = 44;
+const EDGE_THICKNESS = 6;
+const CORNER_SIZE = 14;
+
+const parseCssSize = (value: string, fallback: number): number => {
   if (value.endsWith('%') || value.startsWith('calc(')) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -33,24 +38,35 @@ const viewportSize = () => ({
   height: typeof window === 'undefined' ? 760 : window.innerHeight,
 });
 
-const clampSize = (size: WindowSize, position: { x: number; y: number }): WindowSize => {
+const clampSize = (size: WindowSize, position: WindowPos): WindowSize => {
   const viewport = viewportSize();
-  const maxWidth = Math.max(320, viewport.width - position.x - 12);
-  const maxHeight = Math.max(300, viewport.height - position.y - 58);
+  const maxWidth = Math.max(MIN_WIDTH, viewport.width - position.x - 8);
+  const maxHeight = Math.max(MIN_HEIGHT, viewport.height - position.y - 12);
   return {
-    width: Math.max(320, Math.min(size.width, maxWidth, viewport.width - 24)),
-    height: Math.max(300, Math.min(size.height, maxHeight, viewport.height - 82)),
+    width: Math.max(MIN_WIDTH, Math.min(size.width, maxWidth, viewport.width - 16)),
+    height: Math.max(MIN_HEIGHT, Math.min(size.height, maxHeight, viewport.height - 56)),
   };
 };
 
-const clampPosition = (position: { x: number; y: number }, width: number) => {
+const clampPosition = (position: WindowPos, size: WindowSize): WindowPos => {
   const viewport = viewportSize();
-  const maxX = Math.max(0, viewport.width - Math.min(180, width));
-  const maxY = Math.max(0, viewport.height - 80);
+  const maxX = Math.max(0, viewport.width - Math.min(180, size.width));
+  const maxY = Math.max(MENUBAR_HEIGHT, viewport.height - 80);
   return {
-    x: Math.max(-Math.min(80, width - 160), Math.min(maxX, position.x)),
-    y: Math.max(44, Math.min(maxY, position.y)),
+    x: Math.max(-Math.min(80, size.width - 160), Math.min(maxX, position.x)),
+    y: Math.max(MENUBAR_HEIGHT, Math.min(maxY, position.y)),
   };
+};
+
+const RESIZE_CURSOR: Record<ResizeDir, string> = {
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
 };
 
 export const RetroWindow: React.FC<RetroWindowProps> = ({
@@ -62,159 +78,216 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   isActive,
   onFocus,
   defaultPosition = { x: 50, y: 50 },
-  defaultSize = { width: '450px', height: '400px' },
+  defaultSize = { width: '720px', height: '520px' },
   children,
   isMinimized = false,
   isMaximized = false,
   onMinimize,
-  onMaximize
+  onMaximize,
 }) => {
-  const [position, setPosition] = useState(() => {
-    const initialWidth = parseCssSize(defaultSize.width, 720);
-    return clampPosition({
-      x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
-      y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
-    }, initialWidth);
-  });
-  const [size, setSize] = useState<WindowSize>(() => {
-    const initialPosition = {
-      x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
-      y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20
-    };
-    return clampSize({
-      width: parseCssSize(defaultSize.width, 720),
-      height: parseCssSize(defaultSize.height, 520),
-    }, initialPosition);
-  });
+  const initialOffset = {
+    x: defaultPosition.x + (id.charCodeAt(0) % 5) * 20,
+    y: defaultPosition.y + (id.charCodeAt(id.length - 1) % 5) * 20,
+  };
+  const [position, setPosition] = useState<WindowPos>(() => clampPosition(initialOffset, {
+    width: parseCssSize(defaultSize.width, 720),
+    height: parseCssSize(defaultSize.height, 520),
+  }));
+  const [size, setSize] = useState<WindowSize>(() => clampSize({
+    width: parseCssSize(defaultSize.width, 720),
+    height: parseCssSize(defaultSize.height, 520),
+  }, initialOffset));
+
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-  const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  const windowRef = useRef<HTMLDivElement>(null);
+  const [resizeDir, setResizeDir] = useState<ResizeDir | null>(null);
+  const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const resizeStart = useRef<{ mouseX: number; mouseY: number; pos: WindowPos; size: WindowSize }>({
+    mouseX: 0,
+    mouseY: 0,
+    pos: { x: 0, y: 0 },
+    size: { width: 0, height: 0 },
+  });
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag with left click
+  const handleTitleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    
-    // Avoid dragging if click hits buttons
     if (e.target instanceof HTMLElement && e.target.closest('.window-ctrl-dot')) return;
-    if (isMaximized) return; // Disable drag when maximized
-
+    if (isMaximized) return;
     onFocus();
     setIsDragging(true);
-    dragStart.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
-    };
+    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
     e.preventDefault();
   };
 
-  const handleResizeMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || isMaximized) return;
-    onFocus();
-    setIsResizing(true);
-    resizeStart.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: size.width,
-      height: size.height,
-    };
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  const handleResizeStart = useCallback(
+    (dir: ResizeDir) => (e: React.MouseEvent) => {
+      if (e.button !== 0 || isMaximized) return;
+      onFocus();
+      setResizeDir(dir);
+      resizeStart.current = {
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        pos: { ...position },
+        size: { ...size },
+      };
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [isMaximized, onFocus, position, size]
+  );
 
+  // Drag listener
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      
-      // Calculate bounded coordinates
-      const newX = e.clientX - dragStart.current.x;
-      const newY = e.clientY - dragStart.current.y;
-      
-      setPosition(clampPosition({ x: newX, y: newY }, size.width));
+    if (!isDragging) return;
+    const handleMove = (e: MouseEvent) => {
+      const next = { x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y };
+      setPosition(clampPosition(next, size));
     };
+    const handleUp = () => setIsDragging(false);
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+    };
+  }, [isDragging, size]);
 
-    const handleMouseUp = () => {
-      if (isDragging) {
-        setIsDragging(false);
+  // Resize listener — handles all 8 directions
+  useEffect(() => {
+    if (!resizeDir) return;
+    const dir = resizeDir;
+    const handleMove = (e: MouseEvent) => {
+      const dx = e.clientX - resizeStart.current.mouseX;
+      const dy = e.clientY - resizeStart.current.mouseY;
+      const start = resizeStart.current;
+      let newX = start.pos.x;
+      let newY = start.pos.y;
+      let newWidth = start.size.width;
+      let newHeight = start.size.height;
+
+      if (dir.includes('e')) {
+        newWidth = start.size.width + dx;
       }
+      if (dir.includes('w')) {
+        newWidth = start.size.width - dx;
+        newX = start.pos.x + dx;
+        // Don't let the window slide past minimum width
+        if (newWidth < MIN_WIDTH) {
+          newX = start.pos.x + (start.size.width - MIN_WIDTH);
+          newWidth = MIN_WIDTH;
+        }
+      }
+      if (dir.includes('s')) {
+        newHeight = start.size.height + dy;
+      }
+      if (dir.includes('n')) {
+        newHeight = start.size.height - dy;
+        newY = start.pos.y + dy;
+        if (newHeight < MIN_HEIGHT) {
+          newY = start.pos.y + (start.size.height - MIN_HEIGHT);
+          newHeight = MIN_HEIGHT;
+        }
+        // Don't allow dragging the top above the menubar
+        if (newY < MENUBAR_HEIGHT) {
+          newHeight = newHeight - (MENUBAR_HEIGHT - newY);
+          newY = MENUBAR_HEIGHT;
+        }
+      }
+
+      const clampedSize = clampSize({ width: newWidth, height: newHeight }, { x: newX, y: newY });
+      setPosition({ x: newX, y: newY });
+      setSize(clampedSize);
     };
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
+    const handleUp = () => setResizeDir(null);
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+    document.body.style.cursor = RESIZE_CURSOR[dir];
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = '';
     };
-  }, [isDragging, size.width]);
+  }, [resizeDir]);
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      const nextWidth = resizeStart.current.width + e.clientX - resizeStart.current.x;
-      const nextHeight = resizeStart.current.height + e.clientY - resizeStart.current.y;
-      setSize(clampSize({ width: nextWidth, height: nextHeight }, position));
-    };
-
-    const handleMouseUp = () => {
-      if (isResizing) setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, position]);
-
+  // Keep window in viewport on resize
   useEffect(() => {
     const handleViewportResize = () => {
-      setPosition((current) => ({
-        ...clampPosition(current, size.width),
-      }));
       setSize((current) => clampSize(current, position));
+      setPosition((current) => clampPosition(current, size));
     };
     window.addEventListener('resize', handleViewportResize);
     return () => window.removeEventListener('resize', handleViewportResize);
-  }, [position, size.width]);
+  }, [position, size]);
 
   if (!isOpen) return null;
 
+  const renderHandle = (dir: ResizeDir) => {
+    const style: React.CSSProperties = {
+      position: 'absolute',
+      cursor: RESIZE_CURSOR[dir],
+      zIndex: 6,
+    };
+    switch (dir) {
+      case 'n':
+        Object.assign(style, { top: 0, left: CORNER_SIZE, right: CORNER_SIZE, height: EDGE_THICKNESS });
+        break;
+      case 's':
+        Object.assign(style, { bottom: 0, left: CORNER_SIZE, right: CORNER_SIZE, height: EDGE_THICKNESS });
+        break;
+      case 'e':
+        Object.assign(style, { right: 0, top: CORNER_SIZE, bottom: CORNER_SIZE, width: EDGE_THICKNESS });
+        break;
+      case 'w':
+        Object.assign(style, { left: 0, top: CORNER_SIZE, bottom: CORNER_SIZE, width: EDGE_THICKNESS });
+        break;
+      case 'nw':
+        Object.assign(style, { top: 0, left: 0, width: CORNER_SIZE, height: CORNER_SIZE });
+        break;
+      case 'ne':
+        Object.assign(style, { top: 0, right: 0, width: CORNER_SIZE, height: CORNER_SIZE });
+        break;
+      case 'sw':
+        Object.assign(style, { bottom: 0, left: 0, width: CORNER_SIZE, height: CORNER_SIZE });
+        break;
+      case 'se':
+        Object.assign(style, { bottom: 0, right: 0, width: CORNER_SIZE, height: CORNER_SIZE });
+        break;
+    }
+    return (
+      <div
+        key={dir}
+        role="presentation"
+        aria-hidden="true"
+        className={`window-resize-edge edge-${dir}`}
+        style={style}
+        onMouseDown={handleResizeStart(dir)}
+      />
+    );
+  };
+
   return (
     <div
-      ref={windowRef}
       onMouseDown={onFocus}
-      className={`glass-window glass-panel ${isActive ? 'active' : ''}`}
+      className={`glass-window glass-panel ${isActive ? 'active' : ''}${resizeDir ? ' is-resizing' : ''}${isDragging ? ' is-dragging' : ''}`}
       style={{
         width: isMaximized ? '100vw' : `${size.width}px`,
-        height: isMaximized ? 'calc(100vh - 100px)' : `${size.height}px`,
+        height: isMaximized ? 'calc(100vh - 88px)' : `${size.height}px`,
         left: isMaximized ? '0px' : `${position.x}px`,
-        top: isMaximized ? '40px' : `${position.y}px`,
+        top: isMaximized ? '44px' : `${position.y}px`,
         zIndex: isActive ? 100 : 20,
         position: 'absolute',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1)',
+        transition: resizeDir || isDragging ? 'none' : 'opacity 0.2s ease, transform 0.25s ease',
         opacity: isMinimized ? 0 : 1,
-        transform: isMinimized ? 'scale(0.8) translateY(100px)' : 'scale(1) translateY(0)',
+        transform: isMinimized ? 'scale(0.85) translateY(80px)' : 'scale(1) translateY(0)',
         pointerEvents: isMinimized ? 'none' : 'auto',
-        minWidth: '320px',
-        minHeight: '300px',
+        minWidth: `${MIN_WIDTH}px`,
+        minHeight: `${MIN_HEIGHT}px`,
       }}
     >
-      {/* Title bar / Header (translucent) */}
-      <div 
-        onMouseDown={handleMouseDown}
-        className="glass-window-header"
-      >
+      {/* Title bar */}
+      <div onMouseDown={handleTitleMouseDown} className="glass-window-header">
         <div className="glass-window-title">
           <span style={{ fontSize: '14px', marginRight: '-4px' }}>{icon}</span>
           <span
@@ -229,7 +302,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           </span>
         </div>
 
-        {/* macOS-style circular controls with always-visible glyphs */}
         <div className="glass-window-controls">
           <button
             type="button"
@@ -278,44 +350,34 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         </div>
       </div>
 
-      {/* Embedded Window Content */}
-      <div 
-        className="glass-window-content" 
-        style={{ 
+      {/* Content */}
+      <div
+        className="glass-window-content"
+        style={{
           padding: '16px',
           flexGrow: 1,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: 'transparent'
+          backgroundColor: 'transparent',
         }}
       >
         {children}
       </div>
 
-      {/* Footer Status Bar (premium translucent) */}
-      <div 
-        style={{
-          padding: '8px 16px',
-          fontSize: '9px',
-          fontFamily: 'var(--font-mono)',
-          letterSpacing: '0.05em',
-          backgroundColor: 'rgba(0, 0, 0, 0.25)',
-          color: 'var(--glass-text-muted)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 'auto',
-          borderTop: '1px solid rgba(255, 255, 255, 0.05)'
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--accent-gold)' }}></span>
-          SECURE TECHNICAL SUBPROCESS
-        </span>
-        <span style={{ opacity: 0.8 }}>SYS_CORE.ACTIVE // TRU</span>
-      </div>
-      {!isMaximized && <button className="window-resize-handle" onMouseDown={handleResizeMouseDown} aria-label="Resize window" />}
+      {/* 8 resize handles — invisible overlay strips around edges + corners */}
+      {!isMaximized && (
+        <>
+          {renderHandle('n')}
+          {renderHandle('s')}
+          {renderHandle('e')}
+          {renderHandle('w')}
+          {renderHandle('nw')}
+          {renderHandle('ne')}
+          {renderHandle('sw')}
+          {renderHandle('se')}
+        </>
+      )}
     </div>
   );
 };
