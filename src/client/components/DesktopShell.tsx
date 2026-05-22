@@ -15,6 +15,10 @@ import { SettingsPanel } from '../modules/SettingsPanel';
 import { ConsensusDesk } from '../modules/ConsensusDesk';
 import { ModAcademy } from '../modules/ModAcademy';
 import { NotificationDot } from './NotificationDot';
+import { SentinelChat } from '../modules/SentinelChat';
+import { RiskRadar } from '../modules/RiskRadar';
+import { ActionComposer } from '../modules/ActionComposer';
+import { ShiftHandoff } from '../modules/ShiftHandoff';
 
 type WindowId =
   | 'home'
@@ -27,7 +31,11 @@ type WindowId =
   | 'usergrid'
   | 'settings'
   | 'consensus'
-  | 'academy';
+  | 'academy'
+  | 'sentinel'
+  | 'radar'
+  | 'composer'
+  | 'handoff';
 
 type WindowInfo = {
   isOpen: boolean;
@@ -48,6 +56,24 @@ type DesktopShellProps = {
 };
 
 type ModuleId = Exclude<WindowId, 'home' | 'consensus' | 'academy'>;
+
+type IconPosition = {
+  x: number;
+  y: number;
+};
+
+type IconDrag = {
+  id: ModuleId;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+};
+
+type DesktopIconStyle = React.CSSProperties & {
+  '--tile-tint': string;
+};
 
 type ProductModule = {
   id: ModuleId;
@@ -100,6 +126,10 @@ const initialWindows: Record<WindowId, WindowInfo> = {
   settings: makeWindow('Settings System', 'SYS', '780px', '640px', 180, 82),
   consensus: makeWindow('Consensus Desk', 'VOTE', '800px', '580px', 118, 96),
   academy: makeWindow('Mod Academy', 'EDU', '780px', '560px', 84, 82),
+  sentinel: makeWindow('Sentinel AI Chat', 'AI', '1050px', '700px', 126, 76),
+  radar: makeWindow('Risk Radar', 'RADAR', '980px', '650px', 98, 84),
+  composer: makeWindow('Action Composer', 'DRAFT', '1000px', '660px', 116, 92),
+  handoff: makeWindow('Shift Handoff', 'SHIFT', '980px', '640px', 136, 112),
 };
 
 const modules: ProductModule[] = [
@@ -183,6 +213,46 @@ const modules: ProductModule[] = [
     category: 'Settings',
     aliases: ['settings', 'system', 'config'],
   },
+  {
+    id: 'sentinel',
+    file: 'sentinel.ai',
+    label: 'Sentinel AI',
+    description: 'RAG chat for queue triage, Automod, modmail tone, and launch-ready moderator workflows.',
+    icon: '/snoo.png',
+    tint: '#dff3ff',
+    category: 'Support',
+    aliases: ['ai', 'chat', 'rag', 'sentinel', 'copilot', 'assistant'],
+  },
+  {
+    id: 'radar',
+    file: 'crisis-radar.app',
+    label: 'Crisis Radar',
+    description: 'A live pressure board for urgent reports, rule pressure, trigger activity, and consensus-ready cases.',
+    icon: '/moddesk-icons/radar.svg',
+    tint: '#e3f7ee',
+    category: 'Moderation',
+    aliases: ['risk', 'radar', 'triage', 'pressure', 'dispatch'],
+  },
+  {
+    id: 'composer',
+    file: 'action-composer.app',
+    label: 'Action Composer',
+    description: 'Draft safer moderation actions with templates, removal reasons, evidence checks, and consensus routing.',
+    icon: '/moddesk-icons/composer.svg',
+    tint: '#fff0d1',
+    category: 'Moderation',
+    aliases: ['composer', 'draft', 'action', 'removal', 'reply'],
+  },
+  {
+    id: 'handoff',
+    file: 'shift-handoff.app',
+    label: 'Shift Handoff',
+    description: 'Summarize pressure, next-mod items, recent changes, and handoff notes for timezone coverage.',
+    icon: '/moddesk-icons/handoff.svg',
+    tint: '#eaf3ff',
+    category: 'Overview',
+    aliases: ['handoff', 'shift', 'notes', 'coverage', 'team'],
+  },
 ];
 
 const mainTabs: Array<{ id: WindowId; label: string }> = [
@@ -191,6 +261,10 @@ const mainTabs: Array<{ id: WindowId; label: string }> = [
   { id: 'automod', label: 'Automod' },
   { id: 'insights', label: 'Insights' },
   { id: 'typewriter', label: 'Saved Responses' },
+  { id: 'radar', label: 'Crisis Radar' },
+  { id: 'composer', label: 'Composer' },
+  { id: 'handoff', label: 'Handoff' },
+  { id: 'sentinel', label: 'Sentinel AI' },
 ];
 
 // Window IDs rendered via RetroWindow (home is a special permanent shell rendered separately).
@@ -205,16 +279,63 @@ const windowIds: Exclude<WindowId, 'home'>[] = [
   'settings',
   'consensus',
   'academy',
+  'sentinel',
+  'radar',
+  'composer',
+  'handoff',
 ];
 
-const categories: Array<{ id: WindowId; label: ProductModule['category'] }> = [
-  { id: 'insights', label: 'Overview' },
-  { id: 'queue', label: 'Moderation' },
-  { id: 'automod', label: 'Content' },
-  { id: 'usergrid', label: 'Community Apps' },
-  { id: 'settings', label: 'Settings' },
-  { id: 'modmail', label: 'Support' },
+const topNavItems: Array<{ id: WindowId; label: string }> = [
+  { id: 'radar', label: 'Radar' },
+  { id: 'queue', label: 'Queue' },
+  { id: 'modmail', label: 'Modmail' },
+  { id: 'automod', label: 'Automod' },
+  { id: 'composer', label: 'Composer' },
+  { id: 'handoff', label: 'Handoff' },
+  { id: 'sentinel', label: 'Sentinel' },
 ];
+
+const defaultIconPositions: Record<ModuleId, IconPosition> = {
+  queue: { x: 28, y: 74 },
+  automod: { x: 28, y: 184 },
+  modlog: { x: 28, y: 294 },
+  insights: { x: 28, y: 404 },
+  sentinel: { x: 28, y: 514 },
+  radar: { x: 148, y: 74 },
+  modmail: { x: 148, y: 184 },
+  typewriter: { x: 148, y: 294 },
+  usergrid: { x: 148, y: 404 },
+  settings: { x: 148, y: 514 },
+  composer: { x: 268, y: 74 },
+  handoff: { x: 268, y: 184 },
+};
+
+const iconStorageKey = 'moddesk-os:desktop-icons:v1';
+
+const readStoredIconPositions = (): Record<ModuleId, IconPosition> => {
+  if (typeof window === 'undefined') return defaultIconPositions;
+  try {
+    const raw = window.localStorage.getItem(iconStorageKey);
+    if (!raw) return defaultIconPositions;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return defaultIconPositions;
+    const next = { ...defaultIconPositions };
+    for (const item of modules) {
+      const value = parsed[item.id];
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof value.x === 'number' &&
+        typeof value.y === 'number'
+      ) {
+        next[item.id] = { x: value.x, y: value.y };
+      }
+    }
+    return next;
+  } catch {
+    return defaultIconPositions;
+  }
+};
 
 const fallbackStats = (auditCount: number): HomeStats => ({
   queueOpen: 0,
@@ -231,16 +352,17 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
   const [auditTicker, setAuditTicker] = useState<AuditEvent[]>(statusData.recentAudits ?? []);
   const [homeStats, setHomeStats] = useState<HomeStats>(() => fallbackStats(statusData.recentAudits?.length ?? 0));
-  const [mode, setMode] = useState<'demo' | 'live'>('live');
+  // Workspace mode is driven by persisted settings now — toggled from SettingsPanel only.
+  const mode: 'demo' | 'live' = settings.workspaceMode === 'training' ? 'demo' : 'live';
   const [windows, setWindows] = useState<Record<WindowId, WindowInfo>>({
     ...initialWindows,
     home: { ...initialWindows.home, isOpen: true },
-    queue: { ...initialWindows.queue, isOpen: true },
   });
   const [activeWindow, setActiveWindow] = useState<WindowId | 'audits' | ''>('home');
   const [auditsOpen, setAuditsOpen] = useState(false);
-  const [commandOpen, setCommandOpen] = useState(false);
-  const [commandInput, setCommandInput] = useState('');
+  const [iconPositions, setIconPositions] = useState<Record<ModuleId, IconPosition>>(readStoredIconPositions);
+  const [iconDrag, setIconDrag] = useState<IconDrag | null>(null);
+  const [draggedIcon, setDraggedIcon] = useState<ModuleId | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [liveRules, setLiveRules] = useState<Array<{ shortName: string; description?: string; priority?: number }>>([]);
   const [liveModlog, setLiveModlog] = useState<Array<{ id: string; type: string; moderatorName?: string; details?: string; description?: string; createdAt: string; target?: { author?: string; title?: string } }>>([]);
@@ -256,7 +378,46 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     return () => window.clearInterval(clock);
   }, []);
 
-  // Cmd/Ctrl+H reopens the home dashboard; Escape closes the command palette.
+  useEffect(() => {
+    window.localStorage.setItem(iconStorageKey, JSON.stringify(iconPositions));
+  }, [iconPositions]);
+
+  useEffect(() => {
+    if (!iconDrag) return undefined;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== iconDrag.pointerId) return;
+      const nextX = iconDrag.originX + event.clientX - iconDrag.startX;
+      const nextY = iconDrag.originY + event.clientY - iconDrag.startY;
+      const maxX = Math.max(24, window.innerWidth - 116);
+      const maxY = Math.max(70, window.innerHeight - 116);
+      const clamped = {
+        x: Math.max(12, Math.min(maxX, nextX)),
+        y: Math.max(58, Math.min(maxY, nextY)),
+      };
+      if (Math.abs(event.clientX - iconDrag.startX) > 4 || Math.abs(event.clientY - iconDrag.startY) > 4) {
+        setDraggedIcon(iconDrag.id);
+      }
+      setIconPositions((prev) => ({ ...prev, [iconDrag.id]: clamped }));
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== iconDrag.pointerId) return;
+      setIconDrag(null);
+      window.setTimeout(() => setDraggedIcon(null), 0);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [iconDrag]);
+
+  // Cmd/Ctrl+H reopens the home dashboard.
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
       const isMod = event.metaKey || event.ctrlKey;
@@ -266,13 +427,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
         setActiveWindow('home');
         return;
       }
-      if (event.key === 'Escape' && commandOpen) {
-        setCommandOpen(false);
-      }
     };
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [commandOpen]);
+  }, []);
 
   useEffect(() => {
     const loadHomeStats = async () => {
@@ -284,7 +442,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       ]);
 
       const queue = queueResult.status === 'fulfilled' ? queueResult.value.queue : [];
-      const activeQueue = queue.filter((item) => item.status === 'new' || item.status === 'reviewing');
+      // Live mode: only items that came from the Reddit API (their itemId is namespaced 'live:').
+      const queueForMode = mode === 'live'
+        ? queue.filter((item) => typeof item.itemId === 'string' && item.itemId.startsWith('live:'))
+        : queue.filter((item) => typeof item.itemId !== 'string' || !item.itemId.startsWith('live:'));
+      const activeQueue = queueForMode.filter((item) => item.status === 'new' || item.status === 'reviewing');
       const latestQueue = activeQueue.slice(0, 4);
       const modmailOpen = modmailResult.status === 'fulfilled'
         ? modmailResult.value.conversations.filter((thread) => thread.folder !== 'archived').length
@@ -308,7 +470,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     void loadHomeStats();
     const interval = window.setInterval(() => void loadHomeStats(), 15000);
     return () => window.clearInterval(interval);
-  }, [auditTicker.length]);
+  }, [auditTicker.length, mode]);
 
   useEffect(() => {
     const fetchAudits = async () => {
@@ -356,6 +518,31 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     setActiveWindow(target);
   };
 
+  const startIconDrag = (event: React.PointerEvent<HTMLButtonElement>, idValue: ModuleId) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const origin = iconPositions[idValue];
+    setIconDrag({
+      id: idValue,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: origin.x,
+      originY: origin.y,
+    });
+  };
+
+  const handleIconClick = (target: ModuleId) => {
+    if (draggedIcon === target) return;
+    openWindow(target);
+  };
+
+  const resetDesktopLayout = () => {
+    setIconPositions(defaultIconPositions);
+    window.localStorage.removeItem(iconStorageKey);
+    triggerToast('Desktop icon layout reset.', 'success');
+  };
+
   const closeWindow = (target: WindowId) => {
     setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isOpen: false, isMaximized: false, isMinimized: false } }));
     setActiveWindow((current) => (current === target ? '' : current));
@@ -369,28 +556,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const maximizeWindow = (target: WindowId) => {
     setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isMaximized: !prev[target].isMaximized } }));
     setActiveWindow(target);
-  };
-
-  const runCommand = (value: string) => {
-    const query = value.trim().toLowerCase();
-    if (!query) return;
-    const match = modules.find((module) =>
-      [module.label, module.file, module.category, ...module.aliases].some((candidate) => candidate.toLowerCase().includes(query))
-    );
-    if (match) {
-      openWindow(match.id);
-      setCommandOpen(false);
-      setCommandInput('');
-      return;
-    }
-    if (query.includes('audit') || query.includes('recent')) {
-      setAuditsOpen(true);
-      setCommandOpen(false);
-      setCommandInput('');
-      return;
-    }
-    triggerToast('No matching ModDesk command found.', 'warning');
-    setCommandInput('');
   };
 
   const renderModule = (target: WindowId) => {
@@ -410,10 +575,24 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           session={session}
           triggerToast={triggerToast}
           onReset={onReset}
+          onResetDesktop={resetDesktopLayout}
         />
       );
     }
     if (target === 'consensus') return <ConsensusDesk profile={profile} triggerToast={triggerToast} />;
+    if (target === 'sentinel') return <SentinelChat triggerToast={triggerToast} />;
+    if (target === 'radar') return <RiskRadar mode={mode} triggerToast={triggerToast} />;
+    if (target === 'composer') {
+      return (
+        <ActionComposer
+          mode={mode}
+          triggerToast={triggerToast}
+          openConsensus={() => openWindow('consensus')}
+          openSentinel={() => openWindow('sentinel')}
+        />
+      );
+    }
+    if (target === 'handoff') return <ShiftHandoff triggerToast={triggerToast} openSentinel={() => openWindow('sentinel')} />;
     return <ModAcademy profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
   };
 
@@ -431,21 +610,41 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <span />
             <span />
           </button>
-          {categories.map((category) => (
-            <button key={category.label} onClick={() => openWindow(category.id)}>{category.label}</button>
-          ))}
+          <div className="ph-product-title">
+            <strong>ModDesk OS</strong>
+            <span>{mode === 'live' ? 'Live moderator workspace' : 'Training workspace'}</span>
+          </div>
+          <nav className="ph-top-launcher" aria-label="Quick launch">
+            {topNavItems.map((item) => (
+              <button key={item.id} onClick={() => openWindow(item.id)}>{item.label}</button>
+            ))}
+          </nav>
         </div>
         <div className="ph-os-menu-right">
-          <div className="ph-segmented compact">
-            <button className={mode === 'demo' ? 'active' : ''} onClick={() => setMode('demo')}>Demo</button>
-            <button className={mode === 'live' ? 'active live' : ''} onClick={() => setMode('live')}>Live</button>
-          </div>
+          {mode === 'demo' && (
+            <span
+              className="ph-mode-pill training"
+              title="Workspace is in training mode — toggle from Settings to use live Reddit data."
+            >
+              Training
+            </span>
+          )}
           <span className="ph-clock">{dateLabel}</span>
+          <button
+            type="button"
+            className="ph-xp-pill"
+            onClick={() => openWindow('academy')}
+            title={`u/${profile.username} · Lvl ${profile.trainingLevel} · ${profile.xp} XP · ${profile.correctScenarios}/${profile.totalScenarios} scenarios`}
+            aria-label="Open Mod Academy"
+          >
+            <span className="ph-xp-level">L{profile.trainingLevel}</span>
+            <span className="ph-xp-value">{profile.xp} XP</span>
+          </button>
           <button className="ph-top-cta" onClick={() => openWindow('queue')}>
             <span>Needs Review</span>
             <NotificationDot count={homeStats.queueOpen} label={`${homeStats.queueOpen} items needing review`} />
           </button>
-          <button className="ph-round-btn" onClick={() => setCommandOpen(true)} aria-label="Search">/</button>
+          <button className="ph-round-btn" onClick={() => openWindow('sentinel')} aria-label="Open Sentinel AI">AI</button>
           <button className="ph-ticket-btn" onClick={() => setAuditsOpen(true)} aria-label="Audit feed">
             <span>Audit</span>
             <NotificationDot count={auditTicker.length} tone="info" label={`${auditTicker.length} audit events`} />
@@ -470,18 +669,27 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       )}
 
       <section className="ph-desktop-icons left" aria-label="Desktop files">
-        {modules.map((item) => (
+        {modules.map((item) => {
+          const position = iconPositions[item.id];
+          const iconStyle: DesktopIconStyle = {
+            '--tile-tint': item.tint,
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+          };
+          return (
           <button
             key={item.file}
-            className={`ph-file-icon tint-${item.id}`}
-            style={{ ['--tile-tint' as string]: item.tint }}
-            onClick={() => openWindow(item.id)}
+            className={`ph-file-icon tint-${item.id}${iconDrag?.id === item.id ? ' dragging' : ''}`}
+            style={iconStyle}
+            onPointerDown={(event) => startIconDrag(event, item.id)}
+            onClick={() => handleIconClick(item.id)}
             aria-label={`${item.label} — ${item.file}`}
           >
-            <span className="ph-file-art image"><img src={item.icon} alt="" /></span>
+            <span className="ph-file-art image"><img src={item.icon} alt="" draggable={false} /></span>
             <strong>{item.file}</strong>
           </button>
-        ))}
+          );
+        })}
       </section>
 
       {windows.home.isOpen && !windows.home.isMinimized && (
@@ -534,7 +742,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           {mainTabs.map((tab) => (
             <button key={tab.id} onClick={() => openWindow(tab.id)}>{tab.label}</button>
           ))}
-          <button className="ph-top-cta" onClick={() => setCommandOpen(true)}>Command</button>
+          <button className="ph-top-cta" onClick={() => openWindow('sentinel')}>Sentinel AI</button>
         </div>
         <div className="ph-doc-scroll">
           <section className="moddesk-command-center">
@@ -753,40 +961,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
         </RetroWindow>
       )}
 
-      {commandOpen && (
-        <aside className="ph-copilot open" aria-label="ModDesk command palette">
-          <div className="ph-copilot-head">
-            <div>
-              <span className="ph-kicker">Command palette</span>
-              <strong>Open tools or summarize</strong>
-            </div>
-            <button onClick={() => setCommandOpen(false)}>Close</button>
-          </div>
-          <div className="ph-command-summary">
-            <button onClick={() => openWindow('queue')}><strong>{homeStats.queueOpen}</strong><span>needs review</span></button>
-            <button onClick={() => openWindow('modmail')}><strong>{homeStats.modmailOpen}</strong><span>modmail open</span></button>
-            <button onClick={() => openWindow('modlog')}><strong>{auditTicker.length}</strong><span>audit events</span></button>
-          </div>
-          <div className="ph-prompts">
-            {modules.map((module) => (
-              <button key={module.id} onClick={() => openWindow(module.id)}>{module.label}</button>
-            ))}
-            <button onClick={() => setAuditsOpen(true)}>Audit feed</button>
-          </div>
-          <div className="ph-chat-input">
-            <input
-              value={commandInput}
-              onChange={(event) => setCommandInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') runCommand(commandInput);
-              }}
-              placeholder="Try queue, modmail, users, automod..."
-            />
-            <button onClick={() => runCommand(commandInput)}>Run</button>
-          </div>
-          <p className="ph-command-footnote">Search opens real modules and live summaries only. Unsupported Reddit metrics stay unavailable instead of being invented.</p>
-        </aside>
-      )}
     </main>
   );
 };

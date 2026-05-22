@@ -11,6 +11,7 @@ type SettingsPanelProps = {
   session?: SessionResponse | undefined;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error') => void;
   onReset: () => void;
+  onResetDesktop: () => void;
 };
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -20,6 +21,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   session,
   triggerToast,
   onReset,
+  onResetDesktop,
 }) => {
   const currentCommunity = (session?.subredditName ?? settings.subredditName).replace(/^r\//i, '');
   const [subredditName, setSubredditName] = useState(currentCommunity);
@@ -28,6 +30,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [consensusFixedCount, setConsensusFixedCount] = useState(settings.consensusFixedCount);
   const [trainingRequiredLevel, setTrainingRequiredLevel] = useState(settings.trainingRequiredLevel);
   const [themeMode, setThemeMode] = useState(settings.themeMode);
+  const [workspaceMode, setWorkspaceMode] = useState<'live' | 'training'>(settings.workspaceMode ?? 'live');
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -86,6 +89,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         consensusFixedCount: Number(consensusFixedCount),
         trainingRequiredLevel: Number(trainingRequiredLevel),
         themeMode,
+        workspaceMode,
       });
 
       if (res.success) {
@@ -221,6 +225,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </section>
 
         <section className="settings-card">
+          <span className="module-eyebrow">Workspace mode</span>
+          <div className="settings-mode-toggle" role="radiogroup" aria-label="Workspace mode">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={workspaceMode === 'live'}
+              className={workspaceMode === 'live' ? 'active' : ''}
+              onClick={() => setWorkspaceMode('live')}
+            >
+              <strong>Live</strong>
+              <span>Only real Reddit data. Queue, modmail, mod log, users, automod all read from the Reddit API.</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={workspaceMode === 'training'}
+              className={workspaceMode === 'training' ? 'active' : ''}
+              onClick={() => setWorkspaceMode('training')}
+            >
+              <strong>Training</strong>
+              <span>Unlocks Mod Academy + sandbox scenarios on fake content. No destructive actions affect the subreddit.</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="settings-card">
           <span className="module-eyebrow">Consensus escalation</span>
           <div className="settings-fields">
             <label>
@@ -286,6 +316,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <option value="high-contrast">Dark mode</option>
             </select>
           </label>
+          <button type="button" className="glass-btn" onClick={onResetDesktop}>
+            Reset desktop layout
+          </button>
         </section>
 
         <footer className="settings-actions">

@@ -1,0 +1,7 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Action Composer icon">
+  <rect x="16" y="13" width="92" height="102" rx="15" fill="#FFF9E8" stroke="#18110C" stroke-width="5"/>
+  <path d="M34 39h42M34 57h54M34 75h32" stroke="#18110C" stroke-width="6" stroke-linecap="round"/>
+  <path d="M73 92l9-27 25-25 18 18-25 25-27 9z" fill="#F45D22" stroke="#18110C" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M102 45l18 18" stroke="#FFF9E8" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="33" cy="97" r="9" fill="#3978E8" stroke="#18110C" stroke-width="4"/>
+</svg>

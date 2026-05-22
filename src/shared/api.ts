@@ -76,6 +76,8 @@ export type SessionResponse = {
   };
 };
 
+export type WorkspaceMode = 'live' | 'training';
+
 export type AppSettings = {
   subredditName: string;
   initializedAt: string;
@@ -89,6 +91,8 @@ export type AppSettings = {
   anonymousVotesUntilClosed: boolean;
   templateApprovalRequired: boolean;
   scenarioDifficultyMix: string;
+  /** 'live' = real Reddit data only. 'training' = unlocks Mod Academy + safe sandbox scenarios. Defaults to 'live'. */
+  workspaceMode: WorkspaceMode;
 };
 
 export type ModeratorProfile = {
@@ -312,6 +316,121 @@ export type LiveInsightResponse = {
   telemetryLogs: Array<{ timestamp: string; message: string }>;
 };
 
+export type AiChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type AiContextSource = {
+  id: string;
+  title: string;
+  type: 'rule' | 'queue' | 'template' | 'audit' | 'playbook' | 'settings' | 'modlog' | 'radar' | 'handoff';
+  excerpt: string;
+  score: number;
+};
+
+export type AiChatRequest = {
+  prompt: string;
+  history: AiChatMessage[];
+};
+
+export type AiChatResponse = {
+  reply: string;
+  model: string;
+  status: 'success' | 'fallback';
+  sources: AiContextSource[];
+  promptPreview: string;
+};
+
+export type CrisisSignal =
+  | 'safety'
+  | 'doxxing'
+  | 'brigade'
+  | 'harassment'
+  | 'spam-wave'
+  | 'ban-evasion'
+  | 'duplicate-surge'
+  | 'policy';
+
+export type CrisisRadarCase = {
+  id: string;
+  title: string;
+  itemType: QueueItem['itemType'];
+  author: string;
+  excerpt: string;
+  reportCount: number;
+  ageSeconds: number;
+  severity: Severity;
+  severityScore: number;
+  signals: CrisisSignal[];
+  suggestedRuleIds: string[];
+  recommendedAction: 'review' | 'consensus' | 'draft-response' | 'ask-sentinel' | 'check-user';
+  source: 'live' | 'training';
+};
+
+export type CrisisRadarResponse = {
+  mode: WorkspaceMode;
+  generatedAt: string;
+  pressureScore: number;
+  queueOpen: number;
+  queueCritical: number;
+  cases: CrisisRadarCase[];
+  rulePressure: LiveInsightRule[];
+  recentEvents: Array<{ id: string; kind: string; createdAt: string; actor?: string | null; summary: string }>;
+  recentAudits: AuditEvent[];
+};
+
+export type ComposerDraftRequest = {
+  targetType: 'post' | 'comment' | 'user' | 'modmail' | 'automod' | 'announcement';
+  actionIntent: 'approve' | 'remove' | 'escalate' | 'reply' | 'archive' | 'draft_automod' | 'create_consensus';
+  targetId?: string;
+  context: string;
+};
+
+export type ComposerDraftResponse = {
+  draftId: string;
+  riskLevel: Severity;
+  title: string;
+  draft: string;
+  checklist: string[];
+  matchedTemplates: Array<{ templateId: string; title: string; tone: TemplateTone; markdown: string }>;
+  removalReasons: Array<{ id: string; title: string; message: string }>;
+  shouldUseConsensus: boolean;
+  sentinelPrompt: string;
+};
+
+export type HandoffRecord = {
+  handoffId: string;
+  subredditName: string;
+  createdBy: string;
+  createdAt: string;
+  notes: string;
+  summary: string;
+  pressureScore: number;
+  queueOpen: number;
+  modmailOpen: number | null;
+  pendingConsensus: number;
+  nextModItems: string[];
+  recentChanges: string[];
+};
+
+export type HandoffResponse = {
+  current: {
+    pressureScore: number;
+    queueOpen: number;
+    modmailOpen: number | null;
+    auditCount: number;
+    pendingConsensus: number;
+    nextModItems: string[];
+    recentChanges: string[];
+  };
+  records: HandoffRecord[];
+};
+
+export type CreateHandoffRequest = {
+  notes: string;
+};
+
 export type UpdateSettingsRequest = Partial<
   Pick<
     AppSettings,
@@ -325,6 +444,7 @@ export type UpdateSettingsRequest = Partial<
     | 'anonymousVotesUntilClosed'
     | 'templateApprovalRequired'
     | 'scenarioDifficultyMix'
+    | 'workspaceMode'
   >
 >;
 

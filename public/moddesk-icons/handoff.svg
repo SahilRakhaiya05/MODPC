@@ -1,0 +1,8 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shift Handoff icon">
+  <rect x="13" y="17" width="102" height="94" rx="18" fill="#EAF3FF" stroke="#18110C" stroke-width="5"/>
+  <path d="M34 50h33l-9-9M67 50l-9 9" fill="none" stroke="#3978E8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M94 78H61l9-9M61 78l9 9" fill="none" stroke="#2FA36B" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="34" cy="78" r="12" fill="#F45D22" stroke="#18110C" stroke-width="5"/>
+  <circle cx="94" cy="50" r="12" fill="#F7C948" stroke="#18110C" stroke-width="5"/>
+  <path d="M39 29h50" stroke="#18110C" stroke-width="5" stroke-linecap="round"/>
+</svg>

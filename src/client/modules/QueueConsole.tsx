@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { QueueItem, ModeratorProfile } from '../types';
 import { api } from '../utils/api';
 import { SeverityBadge } from '../components/SeverityBadge';
+import { UserDossier } from '../components/UserDossier';
 
 type QueueConsoleProps = {
   profile: ModeratorProfile;
@@ -303,26 +304,28 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
               </div>
             </div>
 
-            {/* Content Display */}
-            <div 
-              className="glass-panel" 
-              style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.35)',
-                borderColor: 'rgba(255, 255, 255, 0.05)',
-                padding: '16px',
-                fontSize: '13px',
-                fontFamily: 'var(--font-mono)',
-                color: '#93c5fd',
-                lineHeight: '1.6',
-                whiteSpace: 'pre-wrap',
-                borderLeft: '4px solid #3b82f6',
-                flexGrow: 1,
-                maxHeight: '200px',
-                overflowY: 'auto',
-                borderRadius: '8px'
-              }}
-            >
-              {selectedItem.bodyExcerpt}
+            {/* Content + author dossier side-by-side */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 240px', gap: '12px' }}>
+              <div
+                className="glass-panel"
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                  borderColor: 'rgba(255, 255, 255, 0.05)',
+                  padding: '16px',
+                  fontSize: '13px',
+                  fontFamily: 'var(--font-mono)',
+                  color: '#93c5fd',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap',
+                  borderLeft: '4px solid #3b82f6',
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  borderRadius: '8px',
+                }}
+              >
+                {selectedItem.bodyExcerpt}
+              </div>
+              <UserDossier username={selectedItem.author} />
             </div>
 
             {/* Report Reasons Grid */}

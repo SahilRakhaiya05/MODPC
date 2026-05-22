@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import React, { useEffect, useState } from 'react';
 import { api } from '../utils/api';
+import { UserDossier } from '../components/UserDossier';
 
 type ModmailHubProps = {
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
@@ -257,31 +258,11 @@ export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
       </section>
 
       <aside className="modmail-pane modmail-profile">
-        <div className="module-eyebrow">Participant dossier</div>
-        {selectedThread ? (
-          <>
-            <h3>u/{selectedThread.user}</h3>
-            <span className={selectedThread.userBanned ? 'danger' : 'ok'}>
-              {selectedThread.userBanned ? 'Banned status' : 'Regular user'}
-            </span>
-            <dl>
-              <div>
-                <dt>Karma score</dt>
-                <dd>{selectedThread.userKarma}</dd>
-              </div>
-              <div>
-                <dt>Account age</dt>
-                <dd>{selectedThread.userAge}</dd>
-              </div>
-            </dl>
-            <p>
-              {selectedThread.userBanned
-                ? 'Prior ban context is present. Review the live user registry before replying.'
-                : 'No negative history returned by this ModDesk session.'}
-            </p>
-          </>
-        ) : (
-          <span>No user selected.</span>
+        <UserDossier username={selectedThread ? selectedThread.user : null} />
+        {selectedThread?.userBanned && (
+          <p className="modmail-ban-note">
+            Prior ban context is present on this account. Review the live user registry before replying.
+          </p>
         )}
       </aside>
     </div>

@@ -3,7 +3,21 @@ import {
   SystemStatus, AppSettings, ModeratorProfile, TrainingScenario, 
   TrainingAttempt, ConsensusTicket, ResponseTemplate, QueueItem, AuditEvent 
 } from '../types';
-import type { DashboardResponse, LiveInsightResponse, SessionResponse, SubmitAttemptResponse, SubredditInstall, TicketDetailResponse } from '../../shared/api';
+import type {
+  AiChatRequest,
+  AiChatResponse,
+  ComposerDraftRequest,
+  ComposerDraftResponse,
+  CrisisRadarResponse,
+  CreateHandoffRequest,
+  DashboardResponse,
+  HandoffResponse,
+  LiveInsightResponse,
+  SessionResponse,
+  SubmitAttemptResponse,
+  SubredditInstall,
+  TicketDetailResponse
+} from '../../shared/api';
 
 export type LiveModmailThread = {
   id: string;
@@ -67,6 +81,7 @@ export const api = {
       anonymousVotesUntilClosed: data.settings.anonymousVotesUntilClosed,
       templateApprovalRequired: data.settings.templateApprovalRequired,
       scenarioDifficultyMix: data.settings.scenarioDifficultyMix,
+      workspaceMode: data.settings.workspaceMode,
     };
 
     const moderatorProfile: ModeratorProfile = {
@@ -141,6 +156,7 @@ export const api = {
       anonymousVotesUntilClosed: updated.anonymousVotesUntilClosed,
       templateApprovalRequired: updated.templateApprovalRequired,
       scenarioDifficultyMix: updated.scenarioDifficultyMix,
+      workspaceMode: updated.workspaceMode,
     };
 
     return { success: true, settings: mappedSettings };
@@ -590,6 +606,147 @@ export const api = {
 
   async getLiveEvents(): Promise<{ events: Array<{ id: string; kind: string; createdAt: string; actor?: string | null; target?: string | null; summary: string }> }> {
     return await apiFetch('/live/events');
+  },
+
+  async getRadar(): Promise<CrisisRadarResponse> {
+    try {
+      return await apiFetch<CrisisRadarResponse>('/radar');
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      return {
+        mode: 'training',
+        generatedAt: new Date().toISOString(),
+        pressureScore: 76,
+        queueOpen: 3,
+        queueCritical: 1,
+        cases: [
+          {
+            id: 'preview-crisis',
+            title: 'Possible self-harm report in a comment chain',
+            itemType: 'comment',
+            author: 'preview_user',
+            excerpt: 'A user wrote that they may not be safe tonight and the thread is escalating.',
+            reportCount: 4,
+            ageSeconds: 540,
+            severity: 'critical',
+            severityScore: 96,
+            signals: ['safety', 'harassment'],
+            suggestedRuleIds: ['rule-5'],
+            recommendedAction: 'consensus',
+            source: 'training',
+          },
+        ],
+        rulePressure: [{ rule: 'Crisis or Safety Escalation', count: 4, percentage: 80 }],
+        recentEvents: [],
+        recentAudits: [],
+      };
+    }
+  },
+
+  async draftComposer(payload: ComposerDraftRequest): Promise<ComposerDraftResponse> {
+    try {
+      return await apiFetch<ComposerDraftResponse>('/composer/draft', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      return {
+        draftId: 'preview-draft',
+        riskLevel: payload.actionIntent === 'remove' || payload.actionIntent === 'create_consensus' ? 'high' : 'medium',
+        title: `${payload.actionIntent.replace('_', ' ')} / ${payload.targetType}`,
+        draft: `Preview draft for ${payload.targetType}: ${payload.context || 'Add evidence before taking action.'}`,
+        checklist: ['Confirm rule match.', 'Check reversibility.', 'Escalate high-impact actions to consensus.'],
+        matchedTemplates: [],
+        removalReasons: [],
+        shouldUseConsensus: payload.actionIntent === 'remove' || payload.actionIntent === 'create_consensus',
+        sentinelPrompt: `Improve this moderation draft: ${payload.context}`,
+      };
+    }
+  },
+
+  async getHandoff(): Promise<HandoffResponse> {
+    try {
+      return await apiFetch<HandoffResponse>('/handoff');
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      return {
+        current: {
+          pressureScore: 61,
+          queueOpen: 3,
+          modmailOpen: 2,
+          auditCount: 4,
+          pendingConsensus: 1,
+          nextModItems: ['critical: possible self-harm report', 'high: spam wave in new posts'],
+          recentChanges: ['preview_mod: created consensus ticket', 'AutoModerator: removed spam link'],
+        },
+        records: [],
+      };
+    }
+  },
+
+  async createHandoff(payload: CreateHandoffRequest): Promise<HandoffResponse> {
+    try {
+      return await apiFetch<HandoffResponse>('/handoff', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      const createdAt = new Date().toISOString();
+      return {
+        current: {
+          pressureScore: 61,
+          queueOpen: 3,
+          modmailOpen: 2,
+          auditCount: 4,
+          pendingConsensus: 1,
+          nextModItems: ['critical: possible self-harm report'],
+          recentChanges: ['Preview handoff saved locally for UI testing.'],
+        },
+        records: [{
+          handoffId: 'preview-handoff',
+          subredditName: 'ProductMods',
+          createdBy: 'preview_mod',
+          createdAt,
+          notes: payload.notes,
+          summary: `Preview handoff saved at ${createdAt}. Notes: ${payload.notes}`,
+          pressureScore: 61,
+          queueOpen: 3,
+          modmailOpen: 2,
+          pendingConsensus: 1,
+          nextModItems: ['critical: possible self-harm report'],
+          recentChanges: ['Preview handoff saved locally for UI testing.'],
+        }],
+      };
+    }
+  },
+
+  async askAi(payload: AiChatRequest): Promise<AiChatResponse> {
+    try {
+      return await apiFetch<AiChatResponse>('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      return {
+        reply:
+          `Preview RAG answer for: "${payload.prompt}"\n\nIn a real Devvit install, Sentinel sends this through the server endpoint, retrieves queue/rules/templates/audits first, then calls the configured external model. For this local Vite preview, use the visible modules as the context pack.`,
+        model: 'Preview local RAG',
+        status: 'fallback',
+        promptPreview: payload.prompt,
+        sources: [
+          {
+            id: 'preview:queue',
+            title: 'Preview queue and rules',
+            type: 'playbook',
+            excerpt: 'Local preview uses seeded queue, rules, templates, and audit data when the Devvit server is not running.',
+            score: 1,
+          },
+        ],
+      };
+    }
   },
 
   async getRemovalReasons(): Promise<{ reasons: Array<{ id: string; title: string; message: string }> }> {

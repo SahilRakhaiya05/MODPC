@@ -18,6 +18,10 @@
     "entry": "index.cjs"
   },
   "permissions": {
+    "http": {
+      "enable": true,
+      "domains": ["api.groq.com"]
+    },
     "redis": true,
     "reddit": {
       "enable": true,

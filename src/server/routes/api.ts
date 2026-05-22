@@ -3,13 +3,26 @@ import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
   ApiError,
+  AiChatMessage,
+  AiChatRequest,
+  AiChatResponse,
+  AiContextSource,
   AppSettings,
   AuditEvent,
   ConsensusTicket,
   ConsensusVote,
+  ComposerDraftRequest,
+  ComposerDraftResponse,
+  CreateHandoffRequest,
   CreateTicketRequest,
+  CrisisRadarCase,
+  CrisisRadarResponse,
+  CrisisSignal,
   DashboardResponse,
+  HandoffRecord,
+  HandoffResponse,
   LiveInsightResponse,
+  LiveInsightRule,
   ModeratorProfile,
   QueueActionRequest,
   QueueItem,
@@ -45,6 +58,22 @@ type ModContextState = {
   subredditIconUrl: string | null;
   subredditSubscribers: number | null;
   redisStatus: 'ok' | 'degraded';
+};
+
+type RagDocument = {
+  id: string;
+  title: string;
+  type: AiContextSource['type'];
+  content: string;
+};
+
+type LiveTriggerEvent = {
+  id: string;
+  kind: 'post-report' | 'comment-report' | 'mod-action' | 'mod-mail' | 'app-install';
+  createdAt: string;
+  actor?: string | null;
+  target?: string | null;
+  summary: string;
 };
 
 const installsKey = (username: string) => `${NS}:installs:${username.toLowerCase()}`;
@@ -181,6 +210,7 @@ const defaultSettings = (subredditName: string): AppSettings => ({
   anonymousVotesUntilClosed: false,
   templateApprovalRequired: false,
   scenarioDifficultyMix: 'balanced',
+  workspaceMode: 'live',
 });
 
 const profileFor = (username: string): ModeratorProfile => ({
@@ -285,6 +315,114 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Ambiguous high-impact political moderation benefits from consensus before locking or removing a visible thread.',
     tags: ['governance', 'brigading', 'high-impact'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-doxxing',
+    sourceType: 'comment',
+    title: 'Comment posts another user’s real name and workplace',
+    bodyExcerpt:
+      'Comment reveals "I looked up this person on LinkedIn — their real name is REDACTED and they work at REDACTED."',
+    authorNameHash: 'u/moddesk-demo-d0x',
+    reportReasons: ['Doxxing', 'Personal info', 'Site-wide rule'],
+    expectedAction: 'remove',
+    expectedRuleId: 'rule-5',
+    difficulty: 'easy',
+    explanation:
+      'Posting personal information is a Reddit site-wide violation. Remove immediately and report to admins via the safety form.',
+    tags: ['doxxing', 'site-wide', 'safety'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-ban-evasion',
+    sourceType: 'comment',
+    title: 'Newly-created account posting in style of a recently banned user',
+    bodyExcerpt:
+      'Day-old account using the same niche phrasing, slurs, and topic obsession as last week’s permaban. Modmail confirmed identity in private.',
+    authorNameHash: 'u/moddesk-demo-evd',
+    reportReasons: ['Ban evasion', 'Suspected alt'],
+    expectedAction: 'escalate',
+    expectedRuleId: 'rule-5',
+    difficulty: 'medium',
+    explanation:
+      'Ban evasion is a site-wide violation. Escalate so a senior mod can submit to Reddit admins with the evidence trail.',
+    tags: ['ban-evasion', 'site-wide'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-nsfw-untagged',
+    sourceType: 'post',
+    title: 'Borderline NSFW image without tag in a SFW community',
+    bodyExcerpt:
+      'Post is an image with strong sexual undertones — would be allowed in a NSFW-tagged sub but this community is SFW-only.',
+    authorNameHash: 'u/moddesk-demo-nsf',
+    reportReasons: ['NSFW', 'Untagged sexual content'],
+    expectedAction: 'remove',
+    expectedRuleId: 'rule-2',
+    difficulty: 'easy',
+    explanation:
+      'NSFW content in a SFW community is a clear removal. Send a templated removal reason that points to the NSFW rule.',
+    tags: ['nsfw', 'tagging'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-brigade-detected',
+    sourceType: 'post',
+    title: 'Sudden brigade from a linked external community',
+    bodyExcerpt:
+      'In ten minutes the post jumped from 12 upvotes to -300. New accounts piling in with identical low-effort insults — a known sub is linking here.',
+    authorNameHash: 'u/moddesk-demo-brg',
+    reportReasons: ['Brigade', 'Vote manipulation', 'Mass downvotes'],
+    expectedAction: 'escalate',
+    expectedRuleId: 'rule-2',
+    difficulty: 'hard',
+    explanation:
+      'Brigades require a quick lock + admin report with the inbound subreddit. Escalate to consensus before removing the OP\'s on-topic post.',
+    tags: ['brigading', 'vote-manipulation'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-low-effort',
+    sourceType: 'post',
+    title: 'One-line low-effort meme in a discussion sub',
+    bodyExcerpt:
+      'Image macro with the caption "lol same" — no substantive content. Sub rules require text discussion posts only.',
+    authorNameHash: 'u/moddesk-demo-mem',
+    reportReasons: ['Low effort', 'Off-topic'],
+    expectedAction: 'remove',
+    expectedRuleId: 'rule-2',
+    difficulty: 'easy',
+    explanation:
+      'Low-effort image posts in a discussion-only sub are removable. A short templated reply is enough.',
+    tags: ['low-effort'],
+    createdBy: 'system',
+    createdAt: now(),
+    status: 'active',
+  },
+  {
+    scenarioId: 'scenario-misinfo-edge',
+    sourceType: 'post',
+    title: 'Borderline misinformation citing a real-but-stale study',
+    bodyExcerpt:
+      'Post links to a 2014 retracted study to support a current health claim. Comments are pushing back factually but heatedly.',
+    authorNameHash: 'u/moddesk-demo-mis',
+    reportReasons: ['Misinformation', 'Out-of-date source'],
+    expectedAction: 'filter',
+    expectedRuleId: 'rule-2',
+    difficulty: 'hard',
+    explanation:
+      'Filter for senior review — let the discussion add the correction context rather than removing outright. Distinguish a correcting comment if available.',
+    tags: ['misinformation', 'edge-case'],
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -704,6 +842,533 @@ function requireLiveConfirmation(confirmation: string | undefined): void {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readAiRequest(value: unknown): AiChatRequest | undefined {
+  if (!isRecord(value) || typeof value.prompt !== 'string') return undefined;
+  const history: AiChatMessage[] = [];
+  if (Array.isArray(value.history)) {
+    for (const item of value.history) {
+      if (!isRecord(item)) continue;
+      if ((item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string') {
+        history.push({ role: item.role, content: item.content.slice(0, 1400) });
+      }
+    }
+  }
+  return {
+    prompt: value.prompt.slice(0, 1800),
+    history: history.slice(-8),
+  };
+}
+
+function extractGroqText(value: unknown): string {
+  if (!isRecord(value)) return '';
+  if (typeof value.output_text === 'string') return value.output_text;
+  if (!Array.isArray(value.output)) return '';
+  const parts: string[] = [];
+  for (const item of value.output) {
+    if (!isRecord(item) || !Array.isArray(item.content)) continue;
+    for (const content of item.content) {
+      if (isRecord(content) && typeof content.text === 'string') parts.push(content.text);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+function sanitizeForAi(text: string): string {
+  return text
+    .replace(/\bu\/[A-Za-z0-9_-]+/g, 'u/[redacted]')
+    .replace(/https?:\/\/\S+/g, '[link]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1200);
+}
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !['the', 'and', 'for', 'with', 'that', 'this', 'from', 'you'].includes(word));
+}
+
+function retrieveContext(prompt: string, docs: RagDocument[], limit = 7): AiContextSource[] {
+  const terms = new Set(tokenize(prompt));
+  return docs
+    .map((doc) => {
+      const searchable = tokenize(`${doc.title} ${doc.content}`);
+      const score = searchable.reduce((sum, word) => sum + (terms.has(word) ? 2 : 0), 0) + (doc.type === 'queue' ? 1 : 0);
+      return {
+        id: doc.id,
+        title: doc.title,
+        type: doc.type,
+        excerpt: sanitizeForAi(doc.content).slice(0, 280),
+        score,
+      };
+    })
+    .filter((source) => source.score > 0 || source.type === 'playbook')
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+async function buildAiCorpus(modContext: ModContextState & { username: string }): Promise<RagDocument[]> {
+  await seedIfNeeded(modContext.username, modContext.subredditName);
+  const [settings, queue, templates, audits, tickets, liveQueue] = await Promise.all([
+    getSettings(modContext.subredditName),
+    listIndexed<QueueItem>('queue', 'queue'),
+    listIndexed<ResponseTemplate>('templates', 'template'),
+    listIndexed<AuditEvent>('audit', 'audit'),
+    listIndexed<ConsensusTicket>('tickets', 'ticket'),
+    fetchLiveQueue(modContext.subredditName),
+  ]);
+
+  const docs: RagDocument[] = [
+    {
+      id: 'playbook:hackathon',
+      title: 'Winning mod tool criteria',
+      type: 'playbook',
+      content:
+        'Prioritize measurable moderator time savings, reliable UX, close-to-launch polish, broad community appeal, easy installation, and features that reduce moderation load without inventing unsupported Reddit data.',
+    },
+    {
+      id: 'playbook:guardrails',
+      title: 'Moderator safety guardrails',
+      type: 'playbook',
+      content:
+        'Do not execute actions from chat. Recommend reversible steps first, ask for evidence on high-impact decisions, flag safety reports, and keep private modmail or user information minimized.',
+    },
+    {
+      id: 'settings:current',
+      title: `r/${settings.subredditName} workspace settings`,
+      type: 'settings',
+      content: `Consensus mode ${settings.consensusThresholdMode}, required fixed votes ${settings.consensusFixedCount}, percent ${settings.consensusPercent}, training level ${settings.trainingRequiredLevel}, high-impact actions ${settings.highImpactActions.join(', ')}, workspace mode ${settings.workspaceMode}.`,
+    },
+  ];
+
+  const combinedQueue = [
+    ...liveQueue,
+    ...queue.filter((item) => !liveQueue.some((liveItem) => liveItem.itemId === item.itemId)),
+  ];
+
+  for (const item of combinedQueue.slice(0, 12)) {
+    docs.push({
+      id: `queue:${item.itemId}`,
+      title: `${item.severity} ${item.itemType}: ${item.title}`,
+      type: 'queue',
+      content: `${item.reportCount} reports. Reasons: ${item.reports.join(', ')}. Suggested rules: ${item.suggestedRuleIds.join(', ')}. Body: ${item.bodyExcerpt}`,
+    });
+  }
+
+  for (const template of templates.filter((item) => item.status !== 'archived').slice(0, 10)) {
+    docs.push({
+      id: `template:${template.templateId}`,
+      title: template.title,
+      type: 'template',
+      content: `${template.tone} template linked to ${template.linkedRuleId}: ${template.markdown}`,
+    });
+  }
+
+  for (const ticket of tickets.slice(0, 8)) {
+    docs.push({
+      id: `audit-ticket:${ticket.ticketId}`,
+      title: `${ticket.status} consensus: ${ticket.actionType}`,
+      type: 'audit',
+      content: `${ticket.targetDisplay}. Severity ${ticket.severity}. Reason: ${ticket.reason}. Evidence: ${ticket.evidence.join(' ')}`,
+    });
+  }
+
+  for (const auditEvent of audits.slice(0, 12)) {
+    docs.push({
+      id: `audit:${auditEvent.eventId}`,
+      title: auditEvent.eventType,
+      type: 'audit',
+      content: `${auditEvent.actor}: ${auditEvent.summary}`,
+    });
+  }
+
+  try {
+    const subreddit = await reddit.getSubredditByName(modContext.subredditName);
+    const rules = await subreddit.getRules();
+    for (const rule of rules.slice(0, 12)) {
+      docs.push({
+        id: `rule:${rule.shortName}`,
+        title: rule.shortName,
+        type: 'rule',
+        content: rule.description || `Subreddit rule ${rule.shortName}`,
+      });
+    }
+  } catch {
+    for (const rule of [
+      ['Civility', 'Be respectful and avoid harassment or personal attacks.'],
+      ['Stay on Topic', 'Keep content relevant to the community.'],
+      ['Spam / Self-Promo', 'Remove unsolicited promotion, affiliate links, and spam.'],
+      ['Duplicate / Megathread', 'Redirect duplicate submissions into active megathreads.'],
+      ['Crisis or Safety Escalation', 'Escalate urgent safety and self-harm reports carefully.'],
+    ]) {
+      docs.push({ id: `rule:${rule[0]}`, title: rule[0] ?? 'Rule', type: 'rule', content: rule[1] ?? '' });
+    }
+  }
+
+  try {
+    const logs = await reddit.getModerationLog({ subredditName: modContext.subredditName, limit: 8 }).all();
+    for (const log of logs) {
+      docs.push({
+        id: `modlog:${log.id}`,
+        title: log.type || 'mod action',
+        type: 'modlog',
+        content: `${log.moderatorName || 'unknown mod'}: ${log.details || log.description || log.type || 'moderation event'}`,
+      });
+    }
+  } catch {
+    /* live modlog is optional in the RAG corpus */
+  }
+
+  try {
+    const radar = await buildRadar(modContext);
+    for (const item of radar.cases.slice(0, 6)) {
+      docs.push({
+        id: `radar:${item.id}`,
+        title: `Crisis Radar: ${item.title}`,
+        type: 'radar',
+        content: `${item.severity} case. Signals: ${item.signals.join(', ')}. Recommended action: ${item.recommendedAction}. ${item.excerpt}`,
+      });
+    }
+  } catch {
+    /* radar context is optional */
+  }
+
+  try {
+    const handoffs = await listHandoffs();
+    for (const handoff of handoffs.slice(0, 3)) {
+      docs.push({
+        id: `handoff:${handoff.handoffId}`,
+        title: `Shift handoff by ${handoff.createdBy}`,
+        type: 'handoff',
+        content: `${handoff.summary} Notes: ${handoff.notes}`,
+      });
+    }
+  } catch {
+    /* handoff context is optional */
+  }
+
+  return docs;
+}
+
+function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], modContext: ModContextState): string {
+  const contextBlock = sources
+    .map((source, index) => `${index + 1}. [${source.type}] ${source.title}: ${source.excerpt}`)
+    .join('\n');
+  const historyBlock = request.history
+    .map((message) => `${message.role.toUpperCase()}: ${sanitizeForAi(message.content)}`)
+    .join('\n');
+  return [
+    'You are Sentinel, the ModDesk OS AI assistant for Reddit moderators.',
+    'Use only the supplied RAG context plus general moderation reasoning. Be concrete, calm, and launch-ready.',
+    'Never claim you performed a Reddit action. For bans, removals, locks, mutes, automod edits, or public replies, recommend the next step and name the evidence needed.',
+    'When suggesting policy or Automod changes, include a short rationale and a review checklist. Prefer time-saving workflows that match Devvit mod-tool hackathon judging: impact, polish, reliable UX, and ecosystem value.',
+    `Current community: r/${modContext.subredditName}. Usernames and links may be sanitized before leaving Reddit.`,
+    '',
+    'RAG CONTEXT:',
+    contextBlock || 'No matching context found. Ask for the missing detail and avoid guessing.',
+    '',
+    'RECENT CHAT:',
+    historyBlock || 'No prior messages.',
+    '',
+    `MODERATOR QUESTION: ${sanitizeForAi(request.prompt)}`,
+    '',
+    'Answer in a ChatGPT-like style with concise sections. Include a Sources line naming the relevant RAG source titles.',
+  ].join('\n');
+}
+
+function buildFallbackReply(request: AiChatRequest, sources: AiContextSource[]): string {
+  const topSources = sources.slice(0, 3).map((source) => source.title).join(', ') || 'ModDesk playbook';
+  return [
+    'I could not reach the external AI model, so I used the local RAG context instead.',
+    '',
+    `Best next move: triage "${request.prompt.slice(0, 90)}" against the highest-risk queue items and subreddit rules before taking any live action.`,
+    'Check whether the item is high-impact, gather the report reasons and prior audit history, then use a saved response or consensus ticket if the action affects a user account or visible thread.',
+    '',
+    `Sources: ${topSources}`,
+  ].join('\n');
+}
+
+function detectCrisisSignals(item: QueueItem): CrisisSignal[] {
+  const text = `${item.title} ${item.bodyExcerpt} ${item.reports.join(' ')}`.toLowerCase();
+  const signals = new Set<CrisisSignal>();
+  if (/self-harm|suicide|harm|safety|urgent|crisis/.test(text)) signals.add('safety');
+  if (/dox|personal info|real name|address|workplace|phone/.test(text)) signals.add('doxxing');
+  if (/brigad|raid|vote manipulation|external community/.test(text)) signals.add('brigade');
+  if (/harass|abuse|threat|insult|slur/.test(text)) signals.add('harassment');
+  if (/spam|promo|affiliate|crypto|shortener|bit\.ly/.test(text)) signals.add('spam-wave');
+  if (/ban evasion|alt account|evad/.test(text)) signals.add('ban-evasion');
+  if (/duplicate|repost|megathread/.test(text)) signals.add('duplicate-surge');
+  if (signals.size === 0) signals.add('policy');
+  return Array.from(signals);
+}
+
+function recommendRadarAction(item: QueueItem, signals: CrisisSignal[]): CrisisRadarCase['recommendedAction'] {
+  if (signals.some((signal) => signal === 'safety' || signal === 'doxxing' || signal === 'brigade' || signal === 'ban-evasion')) return 'consensus';
+  if (item.severity === 'critical' || item.severity === 'high') return 'review';
+  if (signals.includes('harassment') || signals.includes('spam-wave')) return 'draft-response';
+  return 'review';
+}
+
+async function readLiveEvents(modContext: ModContextState): Promise<LiveTriggerEvent[]> {
+  try {
+    const indexKey = `${NS}:${modContext.subredditName}:live-events:index`;
+    const raw = await redis.get(indexKey);
+    const ids: string[] = raw ? JSON.parse(raw) : [];
+    const events: LiveTriggerEvent[] = [];
+    for (const eventId of ids.slice(0, 20)) {
+      const value = await redis.get(`${NS}:${modContext.subredditName}:live-events:${eventId}`);
+      if (!value) continue;
+      try {
+        events.push(JSON.parse(value) as LiveTriggerEvent);
+      } catch {
+        /* skip malformed */
+      }
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+async function buildRadar(modContext: ModContextState & { username: string }): Promise<CrisisRadarResponse> {
+  await seedIfNeeded(modContext.username, modContext.subredditName);
+  const [settings, storedQueue, audits, tickets, events, insights] = await Promise.all([
+    getSettings(modContext.subredditName),
+    listIndexed<QueueItem>('queue', 'queue'),
+    listIndexed<AuditEvent>('audit', 'audit'),
+    listIndexed<ConsensusTicket>('tickets', 'ticket'),
+    readLiveEvents(modContext),
+    buildLiveInsights(modContext),
+  ]);
+  const liveQueue = await fetchLiveQueue(modContext.subredditName);
+  const sourceQueue = settings.workspaceMode === 'training'
+    ? storedQueue.filter((item) => !item.itemId.startsWith('live:'))
+    : liveQueue;
+  const activeQueue = sourceQueue.filter((item) => item.status === 'new' || item.status === 'reviewing');
+  const cases = activeQueue
+    .map((item): CrisisRadarCase => {
+      const signals = detectCrisisSignals(item);
+      return {
+        id: item.itemId,
+        title: item.title,
+        itemType: item.itemType,
+        author: item.author,
+        excerpt: item.bodyExcerpt,
+        reportCount: item.reportCount,
+        ageSeconds: item.ageSeconds,
+        severity: item.severity,
+        severityScore: item.severityScore,
+        signals,
+        suggestedRuleIds: item.suggestedRuleIds,
+        recommendedAction: recommendRadarAction(item, signals),
+        source: item.itemId.startsWith('live:') ? 'live' : 'training',
+      };
+    })
+    .sort((a, b) => b.severityScore - a.severityScore || b.reportCount - a.reportCount)
+    .slice(0, 10);
+  const pressureScore = Math.min(100, Math.round(
+    (cases.reduce((sum, item) => sum + item.severityScore, 0) / Math.max(1, cases.length)) +
+      events.length * 4 +
+      tickets.filter((ticket) => ticket.status === 'pending' || ticket.status === 'needs_info').length * 6
+  ));
+  return {
+    mode: settings.workspaceMode,
+    generatedAt: now(),
+    pressureScore,
+    queueOpen: activeQueue.length,
+    queueCritical: cases.filter((item) => item.severity === 'critical').length,
+    cases,
+    rulePressure: insights.rulesViolated,
+    recentEvents: events.map((event) => ({
+      id: event.id,
+      kind: event.kind,
+      createdAt: event.createdAt,
+      actor: event.actor ?? null,
+      summary: event.summary,
+    })),
+    recentAudits: audits.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8),
+  };
+}
+
+function riskFromIntent(input: ComposerDraftRequest, contextText: string): Severity {
+  const joined = `${input.actionIntent} ${input.targetType} ${contextText}`.toLowerCase();
+  if (/dox|self-harm|suicide|brigad|ban evasion|permanent|safety/.test(joined)) return 'critical';
+  if (input.actionIntent === 'remove' || input.actionIntent === 'create_consensus' || input.actionIntent === 'draft_automod') return 'high';
+  if (input.actionIntent === 'archive' || input.actionIntent === 'reply' || /harass|spam/.test(joined)) return 'medium';
+  return 'low';
+}
+
+function composerChecklist(input: ComposerDraftRequest, riskLevel: Severity): string[] {
+  const base = [
+    'Confirm the evidence matches a written subreddit or site-wide rule.',
+    'Check whether the action is reversible before touching live Reddit state.',
+  ];
+  if (riskLevel === 'critical' || riskLevel === 'high') base.push('Route this through Consensus Desk before a high-impact user or thread action.');
+  if (input.actionIntent === 'reply') base.push('Use a saved response tone and avoid debating the moderation decision.');
+  if (input.actionIntent === 'draft_automod') base.push('Review Automod YAML in a small change and keep a rollback note.');
+  return base;
+}
+
+async function buildComposerDraft(modContext: ModContextState & { username: string }, input: ComposerDraftRequest): Promise<ComposerDraftResponse> {
+  const [templates, reasons] = await Promise.all([
+    listIndexed<ResponseTemplate>('templates', 'template'),
+    getRemovalReasonsSafe(modContext.subredditName),
+  ]);
+  const contextText = sanitizeForAi(input.context);
+  const riskLevel = riskFromIntent(input, contextText);
+  const matchedTemplates = templates
+    .filter((template) => template.status !== 'archived')
+    .slice(0, 4)
+    .map((template) => ({
+      templateId: template.templateId,
+      title: template.title,
+      tone: template.tone,
+      markdown: template.markdown,
+    }));
+  const title = `${input.actionIntent.replace('_', ' ')} / ${input.targetType}`;
+  const draft = [
+    `Draft for ${input.targetType}${input.targetId ? ` ${input.targetId}` : ''}:`,
+    '',
+    input.actionIntent === 'create_consensus' || riskLevel === 'critical'
+      ? 'Open a consensus ticket with the evidence below before taking a live action.'
+      : 'Use this as a moderator-facing draft before applying the action.',
+    '',
+    `Context: ${contextText || 'No context supplied.'}`,
+    `Recommended tone: ${riskLevel === 'low' ? 'brief and neutral' : 'careful, evidence-led, and non-escalatory'}.`,
+  ].join('\n');
+  return {
+    draftId: id('draft'),
+    riskLevel,
+    title,
+    draft,
+    checklist: composerChecklist(input, riskLevel),
+    matchedTemplates,
+    removalReasons: reasons.slice(0, 5),
+    shouldUseConsensus: riskLevel === 'critical' || riskLevel === 'high' || input.actionIntent === 'create_consensus',
+    sentinelPrompt: `Improve this moderator ${input.actionIntent} draft using the available RAG context: ${contextText}`,
+  };
+}
+
+async function getRemovalReasonsSafe(subredditName: string): Promise<Array<{ id: string; title: string; message: string }>> {
+  try {
+    const reasons = await reddit.getSubredditRemovalReasons(subredditName);
+    return reasons.map((reason: { id?: string; title?: string; message?: string }) => ({
+      id: reason.id ?? '',
+      title: reason.title ?? '',
+      message: reason.message ?? '',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function buildHandoffCurrent(modContext: ModContextState & { username: string }): Promise<HandoffResponse['current']> {
+  const [radar, tickets, insights] = await Promise.all([
+    buildRadar(modContext),
+    listIndexed<ConsensusTicket>('tickets', 'ticket'),
+    buildLiveInsights(modContext),
+  ]);
+  return {
+    pressureScore: radar.pressureScore,
+    queueOpen: radar.queueOpen,
+    modmailOpen: insights.modmailOpen,
+    auditCount: radar.recentAudits.length,
+    pendingConsensus: tickets.filter((ticket) => ticket.status === 'pending' || ticket.status === 'needs_info').length,
+    nextModItems: radar.cases.slice(0, 5).map((item) => `${item.severity}: ${item.title}`),
+    recentChanges: [
+      ...radar.recentEvents.slice(0, 4).map((event) => `${event.kind}: ${event.summary}`),
+      ...radar.recentAudits.slice(0, 4).map((event) => `${event.actor}: ${event.summary}`),
+    ].slice(0, 6),
+  };
+}
+
+async function listHandoffs(): Promise<HandoffRecord[]> {
+  return (await json.get<HandoffRecord[]>(key('handoffs'))) ?? [];
+}
+
+async function buildLiveInsights(modContext: ModContextState & { username: string }): Promise<LiveInsightResponse> {
+  const [storedQueue, auditEvents] = await Promise.all([
+    listIndexed<QueueItem>('queue', 'queue'),
+    listIndexed<AuditEvent>('audit', 'audit'),
+  ]);
+  const liveQueue = await fetchLiveQueue(modContext.subredditName);
+  const combinedQueue = [
+    ...liveQueue,
+    ...storedQueue.filter((item) => !liveQueue.some((liveItem) => liveItem.itemId === item.itemId)),
+  ];
+  const activeQueue = combinedQueue.filter((item) => item.status === 'new' || item.status === 'reviewing');
+  const ruleCounts = new Map<string, number>();
+  for (const item of activeQueue) {
+    const rules = item.suggestedRuleIds.length ? item.suggestedRuleIds : ['Unmapped reports'];
+    for (const rule of rules) {
+      const label = rule.startsWith('rule-') ? ruleTitle(rule) : rule;
+      ruleCounts.set(label, (ruleCounts.get(label) ?? 0) + Math.max(1, item.reportCount));
+    }
+  }
+  const totalRulePressure = Math.max(1, Array.from(ruleCounts.values()).reduce((sum, count) => sum + count, 0));
+  const rulesViolated: LiveInsightRule[] = Array.from(ruleCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([rule, count]) => ({
+      rule,
+      count,
+      percentage: Math.round((count / totalRulePressure) * 100),
+    }));
+  let modmailOpen: number | null = null;
+  let automodState: LiveInsightResponse['automodState'] = 'unavailable';
+  let liveModlogCount = 0;
+  const telemetryLogs: LiveInsightResponse['telemetryLogs'] = [];
+  try {
+    const conversations = await reddit.modMail.getConversations({ subreddits: [modContext.subredditName], state: 'all', limit: 30 });
+    modmailOpen = Object.values(conversations.conversations).filter((conversation) => conversation.state !== 'Archived').length;
+    telemetryLogs.push({ timestamp: now(), message: `Modmail returned ${modmailOpen} open conversations for r/${modContext.subredditName}.` });
+  } catch {
+    telemetryLogs.push({ timestamp: now(), message: 'Modmail capability unavailable for this install or permission set.' });
+  }
+  try {
+    const page = await reddit.getWikiPage(modContext.subredditName, 'config/automod');
+    automodState = page.content.trim().length > 0 ? 'live' : 'empty';
+    telemetryLogs.push({ timestamp: now(), message: `Automod wiki is ${automodState}.` });
+  } catch {
+    telemetryLogs.push({ timestamp: now(), message: 'Automod wiki could not be read by this Devvit session.' });
+  }
+  try {
+    const logs = await reddit.getModerationLog({ subredditName: modContext.subredditName, limit: 30 }).all();
+    liveModlogCount = logs.length;
+    telemetryLogs.push({ timestamp: now(), message: `Modlog returned ${liveModlogCount} recent events.` });
+  } catch {
+    telemetryLogs.push({ timestamp: now(), message: 'Modlog capability unavailable for this install or permission set.' });
+  }
+  const byHour = new Map<string, number>();
+  for (const event of auditEvents.slice(0, 80)) {
+    const label = new Date(event.createdAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' });
+    byHour.set(label, (byHour.get(label) ?? 0) + 1);
+  }
+  return {
+    source: liveQueue.length > 0 || liveModlogCount > 0 || modmailOpen !== null ? 'live' : 'derived',
+    generatedAt: now(),
+    queueOpen: activeQueue.length,
+    queueCritical: activeQueue.filter((item) => item.severity === 'critical').length,
+    modmailOpen,
+    modlogEvents: liveModlogCount,
+    auditEvents: auditEvents.length,
+    automodState,
+    rulesViolated,
+    activityStats: Array.from(byHour.entries()).slice(0, 7).map(([label, count]) => ({ label, count })),
+    telemetryLogs: [
+      { timestamp: now(), message: `Queue pressure derived from ${activeQueue.length} open queue items.` },
+      ...telemetryLogs,
+      ...auditEvents.slice(0, 4).map((event) => ({ timestamp: event.createdAt, message: `${event.actor}: ${event.summary}` })),
+    ],
+  };
+}
+
 async function getIndex(indexName: string): Promise<string[]> {
   return (await json.get<string[]>(key(`index:${indexName}`))) ?? [];
 }
@@ -889,6 +1554,119 @@ api.get('/dashboard', async (c) => {
     queue: combinedQueue.sort((a, b) => b.severityScore - a.severityScore),
     audit: auditEvents.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 40),
   });
+});
+
+api.post('/ai/chat', async (c) => {
+  const modContext = await requireModerator();
+  const body = await c.req.json().catch(() => undefined);
+  const request = readAiRequest(body);
+  if (!request || request.prompt.trim().length < 2) {
+    return c.json<ApiError>({ status: 'error', message: 'Ask Sentinel a moderation question first.' }, 400);
+  }
+
+  const corpus = await buildAiCorpus(modContext);
+  const sources = retrieveContext(request.prompt, corpus);
+  const augmentedPrompt = composeAiPrompt(request, sources, modContext);
+  const promptPreview = augmentedPrompt.slice(0, 900);
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/responses', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-20b',
+          input: augmentedPrompt,
+        }),
+      });
+      if (response.ok) {
+        const payload = await response.json().catch(() => undefined);
+        const reply = extractGroqText(payload);
+        if (reply) {
+          return c.json<AiChatResponse>({
+            reply,
+            model: 'openai/gpt-oss-20b',
+            status: 'success',
+            sources,
+            promptPreview,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Sentinel AI Groq upstream unavailable; using local RAG fallback.', error);
+    }
+  } else {
+    console.warn('GROQ_API_KEY is not configured; using local RAG fallback.');
+  }
+
+  return c.json<AiChatResponse>({
+    reply: buildFallbackReply(request, sources),
+    model: 'Local RAG fallback',
+    status: 'fallback',
+    sources,
+    promptPreview,
+  });
+});
+
+api.get('/radar', async (c) => {
+  const modContext = await requireModerator();
+  return c.json<CrisisRadarResponse>(await buildRadar(modContext));
+});
+
+api.post('/composer/draft', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<ComposerDraftRequest>();
+  if (!input.targetType || !input.actionIntent) {
+    return c.json<ApiError>({ status: 'error', message: 'Composer target and action intent are required.' }, 400);
+  }
+  return c.json<ComposerDraftResponse>(await buildComposerDraft(modContext, input));
+});
+
+api.get('/handoff', async (c) => {
+  const modContext = await requireModerator();
+  const current = await buildHandoffCurrent(modContext);
+  const records = await listHandoffs();
+  return c.json<HandoffResponse>({ current, records: records.slice(0, 12) });
+});
+
+api.post('/handoff', async (c) => {
+  const modContext = await requireModerator();
+  const input = await c.req.json<CreateHandoffRequest>();
+  const notes = typeof input.notes === 'string' ? input.notes.slice(0, 2200) : '';
+  const current = await buildHandoffCurrent(modContext);
+  const record: HandoffRecord = {
+    handoffId: id('handoff'),
+    subredditName: modContext.subredditName,
+    createdBy: modContext.username,
+    createdAt: now(),
+    notes,
+    summary: [
+      `r/${modContext.subredditName} handoff: pressure ${current.pressureScore}/100.`,
+      `${current.queueOpen} queue items, ${current.modmailOpen ?? 0} open modmail threads, ${current.pendingConsensus} pending consensus cases.`,
+      current.nextModItems.length ? `Next mod: ${current.nextModItems.join('; ')}` : 'Next mod: no urgent cases detected.',
+      notes ? `Notes: ${notes}` : '',
+    ].filter(Boolean).join('\n'),
+    pressureScore: current.pressureScore,
+    queueOpen: current.queueOpen,
+    modmailOpen: current.modmailOpen,
+    pendingConsensus: current.pendingConsensus,
+    nextModItems: current.nextModItems,
+    recentChanges: current.recentChanges,
+  };
+  const records = [record, ...(await listHandoffs())].slice(0, 20);
+  await json.set(key('handoffs'), records);
+  await audit(modContext.username, {
+    eventType: 'handoff.created',
+    entityType: 'handoff',
+    entityId: record.handoffId,
+    summary: `Created shift handoff with pressure ${record.pressureScore}/100.`,
+  });
+  return c.json<HandoffResponse>({ current, records });
 });
 
 api.post('/settings', async (c) => {
@@ -2020,15 +2798,6 @@ api.get('/live/insights', async (c) => {
 });
 
 // ----- Live trigger events (written by /internal/triggers/* handlers) -----
-
-type LiveTriggerEvent = {
-  id: string;
-  kind: 'post-report' | 'comment-report' | 'mod-action' | 'mod-mail' | 'app-install';
-  createdAt: string;
-  actor?: string | null;
-  target?: string | null;
-  summary: string;
-};
 
 api.get('/live/events', async (c) => {
   const modContext = await requireModerator();

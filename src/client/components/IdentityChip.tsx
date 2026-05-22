@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { navigateTo } from '@devvit/web/client';
 import type { SessionResponse, SubredditInstall } from '../../shared/api';
 
 type Props = {
@@ -14,12 +15,13 @@ const formatSubs = (n: number | null | undefined): string => {
   return String(n);
 };
 
-const subredditUrl = (name: string) => `https://www.reddit.com/r/${name}/about/apps/`;
+const isUserHandle = (name: string) => name.toLowerCase().startsWith('u/');
+const subredditUrl = (name: string) => `https://www.reddit.com/r/${name}/about/modqueue`;
 const INSTALL_URL = 'https://developers.reddit.com/apps';
 
 export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings, onCopyToast }) => {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -39,31 +41,34 @@ export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings, onCopyT
   }, [open]);
 
   const username = session.username ?? 'anon';
-  const others = session.installs.filter((entry) => entry.subredditName !== session.subredditName);
+  const others = session.installs
+    .filter((entry) => entry.subredditName !== session.subredditName)
+    .filter((entry) => !isUserHandle(entry.subredditName));
   const subsLabel = formatSubs(session.subredditSubscribers);
 
-  const copyUrl = async (url: string, label: string) => {
+  const copyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(url);
-      onCopyToast?.(`${label} URL copied`);
-      setTimeout(() => setCopied(null), 1800);
     } catch {
-      // Fallback: select-and-copy via a temporary input
       const tmp = document.createElement('input');
       tmp.value = url;
       document.body.appendChild(tmp);
       tmp.select();
       try {
         document.execCommand('copy');
-        setCopied(url);
-        onCopyToast?.(`${label} URL copied`);
-        setTimeout(() => setCopied(null), 1800);
       } catch {
-        onCopyToast?.('Copy failed — select the URL manually.');
+        /* ignore */
       }
       document.body.removeChild(tmp);
     }
+    setCopiedUrl(url);
+    onCopyToast?.('URL copied');
+    setTimeout(() => setCopiedUrl(null), 1500);
+  };
+
+  const goToSubreddit = (install: SubredditInstall) => {
+    navigateTo(subredditUrl(install.subredditName));
+    setOpen(false);
   };
 
   return (
@@ -112,37 +117,30 @@ export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings, onCopyT
             <div className="identity-menu-section">
               <span className="identity-menu-label">Switch subreddit ({others.length})</span>
               {others.map((install: SubredditInstall) => (
-                <div key={install.subredditName} className="identity-menu-row">
-                  <button
-                    type="button"
-                    className="identity-menu-item"
-                    onClick={() => copyUrl(subredditUrl(install.subredditName), `r/${install.subredditName}`)}
-                    role="menuitem"
-                  >
-                    <span>r/{install.subredditName}</span>
-                    {formatSubs(install.subscribers) && <em>{formatSubs(install.subscribers)} members</em>}
-                  </button>
-                  <span className="identity-menu-copy-hint">
-                    {copied === subredditUrl(install.subredditName) ? 'Copied ✓' : 'Copy URL'}
-                  </span>
-                </div>
+                <button
+                  key={install.subredditName}
+                  type="button"
+                  className="identity-menu-item"
+                  onClick={() => goToSubreddit(install)}
+                  role="menuitem"
+                >
+                  <span>r/{install.subredditName}</span>
+                  {formatSubs(install.subscribers) && <em>{formatSubs(install.subscribers)} members</em>}
+                </button>
               ))}
             </div>
           )}
 
           <div className="identity-menu-section">
             <span className="identity-menu-label">Install on another subreddit</span>
-            <p className="identity-menu-note">
-              The Devvit webview can't open new tabs. Copy the URL and paste it into a Reddit tab to install ModDesk on a community you moderate.
-            </p>
             <button
               type="button"
               className="identity-menu-item primary"
-              onClick={() => copyUrl(INSTALL_URL, 'Devvit install page')}
+              onClick={() => copyUrl(INSTALL_URL)}
               role="menuitem"
             >
               <span>{INSTALL_URL}</span>
-              <em>{copied === INSTALL_URL ? 'Copied ✓' : 'Copy URL'}</em>
+              <em>{copiedUrl === INSTALL_URL ? 'Copied ✓' : 'Copy'}</em>
             </button>
 
             <button
@@ -157,10 +155,6 @@ export const IdentityChip: React.FC<Props> = ({ session, onOpenSettings, onCopyT
               Workspace settings
             </button>
           </div>
-
-          <p className="identity-menu-foot">
-            Devvit installs are per-subreddit. ModDesk remembers communities you've opened so you can hop between them.
-          </p>
         </div>
       )}
     </div>

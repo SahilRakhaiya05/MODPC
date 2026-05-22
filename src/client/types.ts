@@ -16,6 +16,7 @@ export interface AppSettings {
   anonymousVotesUntilClosed?: boolean;
   templateApprovalRequired?: boolean;
   scenarioDifficultyMix?: string;
+  workspaceMode?: 'live' | 'training';
 }
 
 export interface ModeratorProfile {

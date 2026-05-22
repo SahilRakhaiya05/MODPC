@@ -1,0 +1,10 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Risk Radar icon">
+  <rect x="13" y="13" width="102" height="102" rx="21" fill="#EAF8F2" stroke="#18110C" stroke-width="5"/>
+  <circle cx="64" cy="64" r="39" fill="#FFFFFF" stroke="#18110C" stroke-width="4"/>
+  <circle cx="64" cy="64" r="25" fill="none" stroke="#91D7B2" stroke-width="5"/>
+  <circle cx="64" cy="64" r="10" fill="#2FA36B" stroke="#18110C" stroke-width="4"/>
+  <path d="M64 64L91 37" stroke="#F45D22" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 64L43 83" stroke="#3978E8" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="93" cy="36" r="9" fill="#F45D22" stroke="#18110C" stroke-width="4"/>
+  <circle cx="42" cy="84" r="7" fill="#3978E8" stroke="#18110C" stroke-width="4"/>
+</svg>

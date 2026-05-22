@@ -114,7 +114,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
   const currentLevelMax = nextLevelXp - prevLevelXp;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', height: '100%', fontFamily: "var(--font-body)" }}>
+    <div className="mod-academy" style={{ display: 'flex', flexDirection: 'column', gap: '14px', height: '100%', fontFamily: "var(--font-body)" }}>
       {/* Academy HUD */}
       <div style={{
         background: 'rgba(255, 255, 255, 0.03)',
