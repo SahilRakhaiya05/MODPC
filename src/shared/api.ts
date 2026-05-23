@@ -78,6 +78,18 @@ export type SessionResponse = {
 
 export type WorkspaceMode = 'live' | 'training';
 
+export type AppMode = 'live' | 'demo';
+
+export type AIStatus = 'connected' | 'fallback' | 'disabled' | 'error' | 'timeout';
+
+export type CommunityStatus = 'installed' | 'not_installed' | 'missing_permissions' | 'unknown';
+
+export type ActionState = 'draft' | 'pending_confirmation' | 'executed' | 'failed' | 'cancelled';
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export type ConfidenceLevel = 'low' | 'medium' | 'high';
+
 export type AppSettings = {
   subredditName: string;
   initializedAt: string;
@@ -340,6 +352,43 @@ export type AiChatResponse = {
   status: 'success' | 'fallback';
   sources: AiContextSource[];
   promptPreview: string;
+  modelStatus: {
+    status: AIStatus;
+    provider: 'groq' | 'local' | 'none';
+    model?: string;
+    lastError?: string;
+    latencyMs?: number;
+  };
+};
+
+export type CapabilityStatus = 'available' | 'limited' | 'unavailable' | 'needs_permission' | 'demo_only' | 'error';
+
+export type CapabilityMatrixItem = {
+  id: string;
+  label: string;
+  status: CapabilityStatus;
+  detail: string;
+};
+
+export type SessionState = {
+  user: {
+    id: string;
+    name: string;
+    isModerator: boolean;
+  } | null;
+  mode: AppMode;
+  activeCommunity: {
+    name: string;
+    displayName: string;
+    status: CommunityStatus;
+  } | null;
+  capabilities: CapabilityMatrixItem[];
+  ai: {
+    status: AIStatus;
+    provider: 'groq' | 'local' | 'none';
+    model?: string;
+    lastError?: string;
+  };
 };
 
 export type CrisisSignal =

@@ -36,6 +36,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [confirmReset, setConfirmReset] = useState(false);
   const selectedCommunity = subredditName.replace(/^r\//i, '');
   const selectedIsCurrent = selectedCommunity.toLowerCase() === currentCommunity.toLowerCase();
+  const capabilityRows = [
+    ['Queue', session?.capabilities.queue],
+    ['Modmail', session?.capabilities.modmail],
+    ['Automod', session?.capabilities.automod],
+    ['Users', session?.capabilities.users],
+    ['Modlog', session?.capabilities.modlog],
+    ['Flairs', session?.capabilities.flairs],
+    ['Insights', session?.capabilities.insights],
+  ];
 
   const sortedCommunities = useMemo(() => {
     const byName = new Map<string, SubredditInstall>();
@@ -202,6 +211,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </button>
               );
             })}
+          </div>
+        </section>
+
+        <section className="settings-card">
+          <span className="module-eyebrow">Capability matrix</span>
+          <div className="settings-capability-grid">
+            {capabilityRows.map(([label, cap]) => {
+              const enabled = typeof cap === 'object' && cap !== null && 'enabled' in cap ? cap.enabled : false;
+              const live = typeof cap === 'object' && cap !== null && 'live' in cap ? cap.live : false;
+              const detail = typeof cap === 'object' && cap !== null && 'detail' in cap ? cap.detail : undefined;
+              return (
+                <article key={String(label)}>
+                  <strong>{String(label)}</strong>
+                  <span className={enabled ? live ? 'available' : 'limited' : 'unavailable'}>
+                    {enabled ? live ? 'Available' : 'Limited' : 'Unavailable'}
+                  </span>
+                  <em>{detail ?? (enabled ? 'Ready for this install context.' : 'This capability is not available for the current community or permissions.')}</em>
+                </article>
+              );
+            })}
+            <article>
+              <strong>AI</strong>
+              <span className="limited">Fallback available</span>
+              <em>Groq runs server-side when configured. Local RAG fallback remains available and never performs Reddit actions.</em>
+            </article>
+          </div>
+        </section>
+
+        <section className="settings-card">
+          <span className="module-eyebrow">Groq setup</span>
+          <div className="settings-groq-box">
+            <strong>API key status is server-side only</strong>
+            <p>ModDesk never exposes <code>GROQ_API_KEY</code> to the client. Sentinel will show “Groq connected” after a successful model call, or “Fallback active” when the key is missing, rate-limited, timed out, or unavailable.</p>
           </div>
         </section>
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { api } from '../utils/api';
-import type { AiChatMessage, AiContextSource } from '../../shared/api';
+import type { AiChatMessage, AiChatResponse, AiContextSource } from '../../shared/api';
 
 type SentinelChatProps = {
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
@@ -11,7 +11,10 @@ type ChatBubble = AiChatMessage & {
   sources?: AiContextSource[];
   model?: string;
   status?: 'success' | 'fallback';
+  modelStatus?: AiChatResponse['modelStatus'];
 };
+
+type SentinelTab = 'ask' | 'sources' | 'prompt' | 'drafts' | 'status';
 
 const starterPrompts = [
   'Summarize what needs moderator attention right now.',
@@ -34,6 +37,13 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastPromptPreview, setLastPromptPreview] = useState('');
+  const [activeTab, setActiveTab] = useState<SentinelTab>('ask');
+  const [latestModelStatus, setLatestModelStatus] = useState<AiChatResponse['modelStatus']>({
+    status: 'fallback',
+    provider: 'local',
+    model: 'local-rag',
+    lastError: 'Ask Sentinel a question to check model status.',
+  });
   const nextIdRef = useRef(0);
 
   const visibleSources = useMemo(() => {
@@ -64,9 +74,11 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
           sources: response.sources,
           model: response.model,
           status: response.status,
+          modelStatus: response.modelStatus,
         },
       ]);
       setLastPromptPreview(response.promptPreview);
+      setLatestModelStatus(response.modelStatus);
       if (response.status === 'fallback') {
         triggerToast('AI upstream was unavailable, so Sentinel used local RAG fallback.', 'warning');
       }
@@ -82,6 +94,11 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
           content: `I could not reach the moderation assistant. ${message}`,
           status: 'fallback',
           model: 'Local error',
+          modelStatus: {
+            status: 'error',
+            provider: 'none',
+            lastError: message,
+          },
         },
       ]);
     } finally {
@@ -98,13 +115,32 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
           <p>Retrieves live queue, rules, templates, consensus, audit, and modlog context before it asks the external model.</p>
         </div>
         <div className="sentinel-status">
-          <strong>{loading ? 'Thinking' : 'Ready'}</strong>
-          <span>Server-side retrieval</span>
+          <strong>{loading ? 'Thinking' : latestModelStatus.status === 'connected' ? 'Groq connected' : 'Fallback active'}</strong>
+          <span>{latestModelStatus.provider} / {latestModelStatus.model ?? 'unknown model'}</span>
         </div>
       </header>
 
+      <nav className="sentinel-tabs" aria-label="Sentinel workspace tabs">
+        {[
+          ['ask', 'Ask Sentinel'],
+          ['sources', 'Sources'],
+          ['prompt', 'Prompt Preview'],
+          ['drafts', 'Drafts'],
+          ['status', 'Model Status'],
+        ].map(([idValue, label]) => (
+          <button
+            key={idValue}
+            type="button"
+            className={activeTab === idValue ? 'active' : ''}
+            onClick={() => setActiveTab(idValue as SentinelTab)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
       <div className="sentinel-layout">
-        <section className="sentinel-thread" aria-label="Sentinel chat messages">
+        <section className="sentinel-thread" aria-label="Sentinel chat messages" hidden={activeTab !== 'ask' && activeTab !== 'drafts'}>
           <div className="sentinel-messages">
             {messages.map((message) => (
               <article key={message.id} className={`sentinel-message ${message.role}`}>
@@ -114,6 +150,25 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
                   {message.status === 'fallback' && <em>fallback</em>}
                 </div>
                 <p>{message.content}</p>
+                {message.role === 'assistant' && message.id !== initialMessage.id && (
+                  <div className="sentinel-action-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(message.content);
+                        triggerToast('Draft copied to clipboard.', 'success');
+                      }}
+                    >
+                      Copy draft
+                    </button>
+                    <button type="button" onClick={() => triggerToast('Prepared as a draft only. Open Consensus to attach evidence.', 'info')}>
+                      Send to Consensus
+                    </button>
+                    <button type="button" onClick={() => triggerToast('Action prepared. Use the module confirmation gate before any live write.', 'warning')}>
+                      Prepare action
+                    </button>
+                  </div>
+                )}
                 {message.sources && message.sources.length > 0 && (
                   <small>Sources: {message.sources.slice(0, 4).map((source) => source.title).join(', ')}</small>
                 )}
@@ -157,28 +212,37 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
           </form>
         </section>
 
-        <aside className="sentinel-rag" aria-label="Retrieved RAG sources">
+        <aside className="sentinel-rag" aria-label="Retrieved RAG sources" hidden={activeTab === 'ask' || activeTab === 'drafts' ? false : activeTab !== 'sources' && activeTab !== 'prompt' && activeTab !== 'status'}>
           <div className="ph-panel-title">
-            <span>Retrieved context</span>
+            <span>{activeTab === 'status' ? 'Model status' : activeTab === 'prompt' ? 'Prompt preview' : 'Retrieved context'}</span>
           </div>
-          {visibleSources.length === 0 ? (
+          {activeTab === 'status' ? (
+            <div className="sentinel-model-card">
+              <strong>{latestModelStatus.status}</strong>
+              <span>{latestModelStatus.provider} / {latestModelStatus.model ?? 'unknown model'}</span>
+              <p>{latestModelStatus.lastError ?? 'No model error reported.'}</p>
+              {latestModelStatus.latencyMs && <em>{latestModelStatus.latencyMs}ms</em>}
+              <small>No Reddit action is performed by Sentinel chat.</small>
+            </div>
+          ) : activeTab === 'prompt' ? (
+            <div className="sentinel-prompt-preview">
+              <span>Sanitized server prompt preview</span>
+              <p>{lastPromptPreview || 'The assistant prompt is composed on the server with retrieved context and safety guardrails.'}</p>
+            </div>
+          ) : visibleSources.length === 0 ? (
             <p className="moddesk-empty">Ask a question to see which live Reddit and ModDesk records Sentinel retrieved.</p>
           ) : (
             <div className="sentinel-source-list">
               {visibleSources.map((source) => (
                 <article key={source.id}>
-                  <span>{source.type} / score {source.score}</span>
+                  <span>{source.type} / confidence {source.score > 5 ? 'high' : source.score > 1 ? 'medium' : 'low'}</span>
                   <strong>{source.title}</strong>
                   <p>{source.excerpt}</p>
+                  <button type="button" onClick={() => triggerToast(`Source opened: ${source.title}`, 'info')}>Details</button>
                 </article>
               ))}
             </div>
           )}
-
-          <div className="sentinel-prompt-preview">
-            <span>System prompt preview</span>
-            <p>{lastPromptPreview || 'The assistant prompt is composed on the server with retrieved context and safety guardrails.'}</p>
-          </div>
         </aside>
       </div>
     </section>

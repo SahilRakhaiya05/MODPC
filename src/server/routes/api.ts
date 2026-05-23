@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
+import { buildStructuredFallbackReply } from '../services/sentinel/fallback';
 import type {
   ApiError,
   AiChatMessage,
@@ -1083,15 +1084,122 @@ function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], mod
 }
 
 function buildFallbackReply(request: AiChatRequest, sources: AiContextSource[]): string {
-  const topSources = sources.slice(0, 3).map((source) => source.title).join(', ') || 'ModDesk playbook';
-  return [
-    'I could not reach the external AI model, so I used the local RAG context instead.',
-    '',
-    `Best next move: triage "${request.prompt.slice(0, 90)}" against the highest-risk queue items and subreddit rules before taking any live action.`,
-    'Check whether the item is high-impact, gather the report reasons and prior audit history, then use a saved response or consensus ticket if the action affects a user account or visible thread.',
-    '',
-    `Sources: ${topSources}`,
-  ].join('\n');
+  return buildStructuredFallbackReply(request, sources);
+}
+
+export async function answerSentinelRequest(
+  modContext: ModContextState & { username: string },
+  request: AiChatRequest
+): Promise<AiChatResponse> {
+  const corpus = await buildAiCorpus(modContext);
+  const sources = retrieveContext(request.prompt, corpus);
+  const augmentedPrompt = composeAiPrompt(request, sources, modContext);
+  const promptPreview = augmentedPrompt.slice(0, 900);
+  const startedAt = Date.now();
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/responses', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-20b',
+          input: augmentedPrompt,
+        }),
+      });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        return {
+          reply: buildFallbackReply(request, sources),
+          model: 'Local RAG fallback',
+          status: 'fallback',
+          sources,
+          promptPreview,
+          modelStatus: {
+            status: response.status === 429 ? 'error' : 'fallback',
+            provider: 'local',
+            model: 'local-rag',
+            latencyMs: Date.now() - startedAt,
+            lastError: `Groq returned ${response.status}${text ? `: ${text.slice(0, 140)}` : ''}`,
+          },
+        };
+      }
+      const payload = await response.json().catch(() => undefined);
+      const reply = extractGroqText(payload);
+      if (reply) {
+        return {
+          reply,
+          model: 'openai/gpt-oss-20b',
+          status: 'success',
+          sources,
+          promptPreview,
+          modelStatus: {
+            status: 'connected',
+            provider: 'groq',
+            model: 'openai/gpt-oss-20b',
+            latencyMs: Date.now() - startedAt,
+          },
+        };
+      }
+      return {
+        reply: buildFallbackReply(request, sources),
+        model: 'Local RAG fallback',
+        status: 'fallback',
+        sources,
+        promptPreview,
+        modelStatus: {
+          status: 'fallback',
+          provider: 'local',
+          model: 'local-rag',
+          latencyMs: Date.now() - startedAt,
+          lastError: 'Groq returned an empty or unsupported response shape.',
+        },
+      };
+    } catch (error) {
+      clearTimeout(timeout);
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      console.warn('Sentinel AI Groq upstream unavailable; using local RAG fallback.', error);
+      return {
+        reply: buildFallbackReply(request, sources),
+        model: 'Local RAG fallback',
+        status: 'fallback',
+        sources,
+        promptPreview,
+        modelStatus: {
+          status: isTimeout ? 'timeout' : 'fallback',
+          provider: 'local',
+          model: 'local-rag',
+          latencyMs: Date.now() - startedAt,
+          lastError: isTimeout ? 'Groq request timed out.' : 'Groq request failed.',
+        },
+      };
+    }
+  }
+
+  console.warn('GROQ_API_KEY is not configured; using local RAG fallback.');
+  return {
+    reply: buildFallbackReply(request, sources),
+    model: 'Local RAG fallback',
+    status: 'fallback',
+    sources,
+    promptPreview,
+    modelStatus: {
+      status: 'disabled',
+      provider: 'local',
+      model: 'local-rag',
+      latencyMs: Date.now() - startedAt,
+      lastError: 'No Groq API key is configured.',
+    },
+  };
 }
 
 function detectCrisisSignals(item: QueueItem): CrisisSignal[] {
@@ -1564,52 +1672,20 @@ api.post('/ai/chat', async (c) => {
     return c.json<ApiError>({ status: 'error', message: 'Ask Sentinel a moderation question first.' }, 400);
   }
 
-  const corpus = await buildAiCorpus(modContext);
-  const sources = retrieveContext(request.prompt, corpus);
-  const augmentedPrompt = composeAiPrompt(request, sources, modContext);
-  const promptPreview = augmentedPrompt.slice(0, 900);
+  return c.json<AiChatResponse>(await answerSentinelRequest(modContext, request));
+});
 
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/responses', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${groqKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-20b',
-          input: augmentedPrompt,
-        }),
-      });
-      if (response.ok) {
-        const payload = await response.json().catch(() => undefined);
-        const reply = extractGroqText(payload);
-        if (reply) {
-          return c.json<AiChatResponse>({
-            reply,
-            model: 'openai/gpt-oss-20b',
-            status: 'success',
-            sources,
-            promptPreview,
-          });
-        }
-      }
-    } catch (error) {
-      console.warn('Sentinel AI Groq upstream unavailable; using local RAG fallback.', error);
-    }
-  } else {
-    console.warn('GROQ_API_KEY is not configured; using local RAG fallback.');
-  }
-
-  return c.json<AiChatResponse>({
-    reply: buildFallbackReply(request, sources),
-    model: 'Local RAG fallback',
-    status: 'fallback',
-    sources,
-    promptPreview,
+api.get('/ai/status', async (c) => {
+  await requireModerator();
+  const hasKey = Boolean(process.env.GROQ_API_KEY);
+  return c.json({
+    status: hasKey ? 'connected' : 'disabled',
+    provider: hasKey ? 'groq' : 'local',
+    model: hasKey ? 'openai/gpt-oss-20b' : 'local-rag',
+    fallbackAvailable: true,
+    detail: hasKey
+      ? 'Groq key is configured. Sentinel will fall back safely if the upstream model fails.'
+      : 'Groq is not configured. Sentinel will use deterministic local RAG fallback.',
   });
 });
 

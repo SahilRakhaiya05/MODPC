@@ -264,7 +264,6 @@ const mainTabs: Array<{ id: WindowId; label: string }> = [
   { id: 'radar', label: 'Crisis Radar' },
   { id: 'composer', label: 'Composer' },
   { id: 'handoff', label: 'Handoff' },
-  { id: 'sentinel', label: 'Sentinel AI' },
 ];
 
 // Window IDs rendered via RetroWindow (home is a special permanent shell rendered separately).
@@ -285,14 +284,68 @@ const windowIds: Exclude<WindowId, 'home'>[] = [
   'handoff',
 ];
 
-const topNavItems: Array<{ id: WindowId; label: string }> = [
-  { id: 'radar', label: 'Radar' },
-  { id: 'queue', label: 'Queue' },
-  { id: 'modmail', label: 'Modmail' },
-  { id: 'automod', label: 'Automod' },
-  { id: 'composer', label: 'Composer' },
-  { id: 'handoff', label: 'Handoff' },
-  { id: 'sentinel', label: 'Sentinel' },
+const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; label: string; hint: string }> }> = [
+  {
+    label: 'Moderation',
+    items: [
+      { id: 'queue', label: 'Needs Review', hint: 'Reports, severity, rules, guarded actions' },
+      { id: 'modmail', label: 'Modmail', hint: 'Replies, internal notes, archive workflow' },
+      { id: 'consensus', label: 'Consensus', hint: 'Evidence-backed high-impact decisions' },
+      { id: 'handoff', label: 'Handoff', hint: 'Pass context to the next moderator' },
+      { id: 'usergrid', label: 'User Registry', hint: 'Banned, muted, approved, moderators' },
+    ],
+  },
+  {
+    label: 'Community',
+    items: [
+      { id: 'home', label: 'Overview', hint: 'Live pressure and workspace summary' },
+      { id: 'radar', label: 'Radar', hint: 'Urgent signals and rule pressure' },
+      { id: 'insights', label: 'Insights', hint: 'Queue and mod activity trends' },
+      { id: 'modlog', label: 'Modlog', hint: 'Reddit modlog plus audit trail' },
+      { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
+    ],
+  },
+  {
+    label: 'Automod',
+    items: [
+      { id: 'automod', label: 'Automod Studio', hint: 'Draft, validate, diff, publish safely' },
+      { id: 'composer', label: 'Snippet Generator', hint: 'Draft Automod snippets with Sentinel context' },
+      { id: 'audits', label: 'History', hint: 'Automod and ModDesk audit events' },
+    ],
+  },
+  {
+    label: 'AI',
+    items: [
+      { id: 'sentinel', label: 'Sentinel', hint: 'RAG assistant, sources, prompt preview' },
+      { id: 'composer', label: 'Composer', hint: 'Safe drafts and response shaping' },
+      { id: 'radar', label: 'Source Library', hint: 'Radar context and retrieved cases' },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { id: 'settings', label: 'Install Status', hint: 'Community picker and capabilities' },
+      { id: 'settings', label: 'Groq Setup', hint: 'Model status and fallback explanation' },
+      { id: 'academy', label: 'Demo Mode', hint: 'Training and Mod Academy scenarios' },
+      { id: 'audits', label: 'Audit Log', hint: 'Review guarded actions and outcomes' },
+    ],
+  },
+];
+
+const commandItems: Array<{ label: string; target: WindowId | 'audits'; hint: string }> = [
+  { label: 'Open Sentinel', target: 'sentinel', hint: 'Ask Sentinel and inspect source cards' },
+  { label: 'Review queue', target: 'queue', hint: 'Open Needs Review' },
+  { label: 'Open modmail', target: 'modmail', hint: 'Reply, note, archive, draft' },
+  { label: 'Draft modmail reply', target: 'sentinel', hint: 'Start from Sentinel draft prompt' },
+  { label: 'Open Automod Studio', target: 'automod', hint: 'Validate and diff Automod changes' },
+  { label: 'Generate Automod snippet', target: 'composer', hint: 'Use Composer/Sentinel as a draft desk' },
+  { label: 'Check Groq status', target: 'sentinel', hint: 'Open Model Status tab' },
+  { label: 'Switch community', target: 'settings', hint: 'Open community picker' },
+  { label: 'Start demo mode', target: 'settings', hint: 'Toggle training mode safely' },
+  { label: 'Escalate to consensus', target: 'consensus', hint: 'Create evidence-backed case' },
+  { label: 'Open user registry', target: 'usergrid', hint: 'Review user lists and guarded actions' },
+  { label: 'Open capability matrix', target: 'settings', hint: 'See what is available now' },
+  { label: 'Open audit log', target: 'audits', hint: 'Review action history' },
 ];
 
 const defaultIconPositions: Record<ModuleId, IconPosition> = {
@@ -360,6 +413,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   });
   const [activeWindow, setActiveWindow] = useState<WindowId | 'audits' | ''>('home');
   const [auditsOpen, setAuditsOpen] = useState(false);
+  const [openNavMenu, setOpenNavMenu] = useState<string | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
   const [iconPositions, setIconPositions] = useState<Record<ModuleId, IconPosition>>(readStoredIconPositions);
   const [iconDrag, setIconDrag] = useState<IconDrag | null>(null);
   const [draggedIcon, setDraggedIcon] = useState<ModuleId | null>(null);
@@ -426,6 +482,16 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
         setWindows((prev) => ({ ...prev, home: { ...prev.home, isOpen: true, isMinimized: false } }));
         setActiveWindow('home');
         return;
+      }
+      if (isMod && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen((current) => !current);
+        setOpenNavMenu(null);
+        return;
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false);
+        setOpenNavMenu(null);
       }
     };
     window.addEventListener('keydown', handleKeydown);
@@ -511,11 +577,30 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     [now]
   );
   const visibleAudits = auditTicker.slice(0, 5);
-  const subredditLabel = `r/${settings.subredditName}`;
+  const cleanSubredditName = settings.subredditName.replace(/^r\//i, '').replace(/\s+\(Standalone\)$/i, '');
+  const cleanUsername = profile.username.replace(/^u\//i, '');
+  const subredditLabel = `r/${cleanSubredditName}`;
+  const filteredCommands = commandItems.filter((item) => {
+    const needle = commandQuery.trim().toLowerCase();
+    return !needle || `${item.label} ${item.hint}`.toLowerCase().includes(needle);
+  });
 
   const openWindow = (target: WindowId) => {
     setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isOpen: true, isMinimized: false } }));
     setActiveWindow(target);
+    setOpenNavMenu(null);
+    setCommandOpen(false);
+  };
+
+  const runLauncherTarget = (target: WindowId | 'audits') => {
+    if (target === 'audits') {
+      setAuditsOpen(true);
+      setActiveWindow('audits');
+      setCommandOpen(false);
+      setOpenNavMenu(null);
+      return;
+    }
+    openWindow(target);
   };
 
   const startIconDrag = (event: React.PointerEvent<HTMLButtonElement>, idValue: ModuleId) => {
@@ -615,12 +700,33 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <span>{mode === 'live' ? 'Live moderator workspace' : 'Training workspace'}</span>
           </div>
           <nav className="ph-top-launcher" aria-label="Quick launch">
-            {topNavItems.map((item) => (
-              <button key={item.id} onClick={() => openWindow(item.id)}>{item.label}</button>
+            {navMenus.map((menu) => (
+              <div key={menu.label} className="ph-nav-menu">
+                <button
+                  type="button"
+                  aria-expanded={openNavMenu === menu.label}
+                  onClick={() => setOpenNavMenu((current) => current === menu.label ? null : menu.label)}
+                >
+                  {menu.label}
+                </button>
+                {openNavMenu === menu.label && (
+                  <div className="ph-nav-dropdown" role="menu">
+                    {menu.items.map((item) => (
+                      <button key={`${menu.label}-${item.label}`} type="button" onClick={() => runLauncherTarget(item.id)} role="menuitem">
+                        <strong>{item.label}</strong>
+                        <span>{item.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </nav>
         </div>
         <div className="ph-os-menu-right">
+          <button type="button" className="ph-command-btn" onClick={() => setCommandOpen(true)} aria-label="Open command launcher">
+            Search
+          </button>
           {mode === 'demo' && (
             <span
               className="ph-mode-pill training"
@@ -634,7 +740,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             type="button"
             className="ph-xp-pill"
             onClick={() => openWindow('academy')}
-            title={`u/${profile.username} · Lvl ${profile.trainingLevel} · ${profile.xp} XP · ${profile.correctScenarios}/${profile.totalScenarios} scenarios`}
+            title={`u/${cleanUsername} · Lvl ${profile.trainingLevel} · ${profile.xp} XP · ${profile.correctScenarios}/${profile.totalScenarios} scenarios`}
             aria-label="Open Mod Academy"
           >
             <span className="ph-xp-level">L{profile.trainingLevel}</span>
@@ -665,6 +771,36 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           <span>
             u/{session.username ?? 'unknown'} is not a moderator of r/{session.subredditName}. Destructive actions are hidden.
           </span>
+        </div>
+      )}
+
+      {commandOpen && (
+        <div className="ph-command-backdrop" role="dialog" aria-modal="true" aria-label="Command launcher">
+          <section className="ph-command-palette">
+            <header>
+              <strong>Command launcher</strong>
+              <button type="button" onClick={() => setCommandOpen(false)} aria-label="Close command launcher">x</button>
+            </header>
+            <input
+              autoFocus
+              value={commandQuery}
+              onChange={(event) => setCommandQuery(event.target.value)}
+              placeholder="Search commands: Sentinel, queue, modmail, Automod, demo..."
+            />
+            <div>
+              {filteredCommands.length === 0 ? (
+                <p>No matching command. Try "queue", "Groq", or "demo".</p>
+              ) : (
+                filteredCommands.slice(0, 9).map((item) => (
+                  <button key={item.label} type="button" onClick={() => runLauncherTarget(item.target)}>
+                    <strong>{item.label}</strong>
+                    <span>{item.hint}</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <footer>Cmd/Ctrl + K opens this launcher. Demo mode never performs Reddit writes.</footer>
+          </section>
         </div>
       )}
 
@@ -754,7 +890,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
               </div>
               <div className="moddesk-session-card">
                 <span>Active session</span>
-                <strong>u/{profile.username}</strong>
+                <strong>u/{cleanUsername}</strong>
                 <em>{mode === 'live' ? 'Guarded live mode' : 'Local demo mode'}</em>
               </div>
             </div>
@@ -790,7 +926,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
                 <div className="moddesk-queue-mini">
                   {homeStats.latestQueue.length === 0 ? (
-                    <p className="moddesk-empty">Queue is clear. No reported posts or comments returned by Reddit for r/{settings.subredditName}.</p>
+                    <p className="moddesk-empty">No items need review right now. You can switch communities, open demo mode, or check modmail for {subredditLabel}.</p>
                   ) : (
                     homeStats.latestQueue.map((item) => (
                       <button key={item.itemId} onClick={() => openWindow('queue')}>
@@ -830,7 +966,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
                 <div className="moddesk-modlog-mini">
                   {liveModlog.length === 0 ? (
-                    <p className="moddesk-empty">No recent moderator actions in r/{settings.subredditName}.</p>
+                    <p className="moddesk-empty">No recent moderator actions in {subredditLabel}.</p>
                   ) : (
                     liveModlog.map((entry) => (
                       <button key={entry.id} onClick={() => openWindow('modlog')}>
@@ -857,7 +993,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
                 <ol className="moddesk-rules-list">
                   {liveRules.length === 0 ? (
-                    <li className="moddesk-empty">No rules returned by Reddit. Define them in subreddit settings.</li>
+                    <li className="moddesk-empty">No rules returned by Reddit. Define them in subreddit settings or open demo mode to practice the workflow.</li>
                   ) : (
                     liveRules.map((rule, index) => (
                       <li key={`rule-${index}`}>

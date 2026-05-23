@@ -22,7 +22,7 @@ const createPreviewStatus = (): SystemStatus => ({
   status: 'preview',
   redisStatus: 'offline-preview',
   settings: {
-    subredditName: 'r/ProductMods (Standalone)',
+    subredditName: 'ProductMods',
     initializedAt: new Date().toISOString(),
     consensusThresholdMode: 'percent',
     consensusFixedCount: 3,
@@ -37,7 +37,7 @@ const createPreviewStatus = (): SystemStatus => ({
     scenarioDifficultyMix: 'balanced',
   },
   moderatorProfile: {
-    username: 'u/preview_mod',
+    username: 'preview_mod',
     firstSeenAt: new Date().toISOString(),
     roleLabel: 'Lead moderator',
     trainingLevel: 4,

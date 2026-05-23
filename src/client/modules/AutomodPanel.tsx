@@ -8,9 +8,11 @@ type AutomodPanelProps = {
 
 export const AutomodPanel: React.FC<AutomodPanelProps> = ({ triggerToast }) => {
   const [yaml, setYaml] = useState('');
+  const [originalYaml, setOriginalYaml] = useState('');
   const [loading, setLoading] = useState(true);
   const [reason, setReason] = useState('Update automod via ModyOS YAML Panel');
   const [validating, setValidating] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
   const [validationReport, setValidationReport] = useState<{
     status: 'idle' | 'success' | 'error';
     message: string;
@@ -22,6 +24,8 @@ export const AutomodPanel: React.FC<AutomodPanelProps> = ({ triggerToast }) => {
     try {
       const res = await api.getAutomod();
       setYaml(res.content);
+      setOriginalYaml(res.content);
+      setConfirmPublish(false);
       triggerToast('Wiki config/automod rules loaded successfully.', 'success');
     } catch {
       triggerToast('Could not fetch custom wiki config; loaded default template.', 'info');
@@ -130,17 +134,32 @@ action_reason: "High hostility toxicity warning trigger"
       triggerToast('YAML contents cannot be blank.', 'error');
       return;
     }
+    if (validationReport.status !== 'success') {
+      triggerToast('Run validation before publishing Automod changes.', 'warning');
+      return;
+    }
+    if (!confirmPublish) {
+      triggerToast('Confirm the guarded Automod publish first.', 'warning');
+      return;
+    }
     try {
       setLoading(true);
       await api.saveAutomod(yaml, reason);
       triggerToast('Wiki config/automod committed successfully!', 'success');
       setValidationReport({ status: 'idle', message: '', errors: [] });
+      setOriginalYaml(yaml);
+      setConfirmPublish(false);
     } catch (err) {
       triggerToast(err instanceof Error ? err.message : 'Failed to update Automod Wiki config.', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  const addedLines = yaml.split('\n').filter((line) => line.trim() && !originalYaml.includes(line)).length;
+  const removedLines = originalYaml.split('\n').filter((line) => line.trim() && !yaml.includes(line)).length;
+  const broadChange = /type:\s*any|body\s*\(regex\)|action:\s*remove|author:\s*\n\s*account_age:\s*"<\s*30/i.test(yaml);
+  const riskLabel = broadChange || addedLines + removedLines > 12 ? 'high' : addedLines + removedLines > 0 ? 'medium' : 'low';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', color: '#e2e8f0' }}>
@@ -200,8 +219,8 @@ action_reason: "High hostility toxicity warning trigger"
               className="glass-input"
               style={{ flexGrow: 1, fontSize: '11px', padding: '6px 12px' }}
             />
-            <button className="glass-btn primary" onClick={saveRules} disabled={loading}>
-              💾 Commit Changes
+            <button className="glass-btn primary" onClick={saveRules} disabled={loading || validationReport.status !== 'success' || !confirmPublish}>
+              Publish guarded
             </button>
           </div>
         </div>
@@ -241,6 +260,19 @@ action_reason: "High hostility toxicity warning trigger"
             <span style={{ fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#fff', display: 'block', letterSpacing: '0.1em' }}>
               DRY-RUN VALIDATION REPORT
             </span>
+            <div className="automod-diff-card">
+              <strong>Diff preview</strong>
+              <span>Added {addedLines} · Removed {removedLines} · Risk {riskLabel}</span>
+              <em>{riskLabel === 'high' ? 'Consensus recommended before publishing broad filters or remove actions.' : 'Review the diff, then confirm publish if the change is intentional.'}</em>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={confirmPublish}
+                  onChange={(event) => setConfirmPublish(event.target.checked)}
+                />
+                I understand this publishes to the live Automod wiki for this community.
+              </label>
+            </div>
             {validationReport.status === 'idle' && (
               <span style={{ fontSize: '11px', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-body)', marginTop: '10px' }}>
                 Run dry-run compiler validation to test syntax before deploying rules live.

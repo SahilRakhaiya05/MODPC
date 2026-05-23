@@ -25,6 +25,9 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
   const [isLoading, setIsLoading] = useState(false);
   const [liveRules, setLiveRules] = useState<LiveRule[]>([]);
   const [confirmLiveAction, setConfirmLiveAction] = useState(false);
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'post' | 'comment' | 'thread'>('all');
+  const [authorFilter, setAuthorFilter] = useState('');
 
   const fetchQueue = async () => {
     setIsLoading(true);
@@ -115,8 +118,12 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
   // Filter queue items depending on 'demo' vs 'live' mode
   const filteredQueue = queue.filter(item => {
     const isLiveItem = item.itemId.startsWith('live:');
-    return mode === 'live' ? isLiveItem : !isLiveItem;
-  });
+    const matchesMode = mode === 'live' ? isLiveItem : !isLiveItem;
+    const matchesSeverity = severityFilter === 'all' || item.severity === severityFilter;
+    const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
+    const matchesAuthor = !authorFilter.trim() || item.author.toLowerCase().includes(authorFilter.trim().toLowerCase());
+    return matchesMode && matchesSeverity && matchesType && matchesAuthor;
+  }).sort((a, b) => b.severityScore - a.severityScore);
 
   return (
     <div style={{ display: 'flex', gap: '16px', height: '100%', minHeight: 0, fontFamily: 'var(--font-body)' }}>
@@ -152,6 +159,23 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
           >
             {filteredQueue.length} LEFT
           </span>
+        </div>
+
+        <div className="queue-filter-bar">
+          <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}>
+            <option value="all">All risk</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}>
+            <option value="all">All types</option>
+            <option value="post">Posts</option>
+            <option value="comment">Comments</option>
+            <option value="thread">Threads</option>
+          </select>
+          <input value={authorFilter} onChange={(event) => setAuthorFilter(event.target.value)} placeholder="Author" />
         </div>
 
         <div style={{ flexGrow: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -450,6 +474,13 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                     style={{ color: 'var(--accent-gold)', borderColor: 'var(--accent-border-pill)', minWidth: '150px', fontWeight: 600 }}
                   >
                     Escalate case
+                  </button>
+                  <button
+                    onClick={() => triggerToast('Sentinel handoff prepared as a draft. Open Sentinel from the AI menu to ask with this item context.', 'info')}
+                    className="glass-btn"
+                    style={{ minWidth: '150px', fontWeight: 600 }}
+                  >
+                    Send to Sentinel
                   </button>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button

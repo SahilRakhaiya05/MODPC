@@ -3,6 +3,7 @@ import {
   SystemStatus, AppSettings, ModeratorProfile, TrainingScenario, 
   TrainingAttempt, ConsensusTicket, ResponseTemplate, QueueItem, AuditEvent 
 } from '../types';
+import { trpc } from '../lib/trpc';
 import type {
   AiChatRequest,
   AiChatResponse,
@@ -724,18 +725,52 @@ export const api = {
 
   async askAi(payload: AiChatRequest): Promise<AiChatResponse> {
     try {
-      return await apiFetch<AiChatResponse>('/ai/chat', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      return await trpc.sentinel.ask.mutate(payload);
     } catch (error) {
-      if (!import.meta.env.DEV) throw error;
+      try {
+        return await apiFetch<AiChatResponse>('/ai/chat', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      } catch (fallbackError) {
+        if (!import.meta.env.DEV) throw fallbackError;
+      }
       return {
         reply:
-          `Preview RAG answer for: "${payload.prompt}"\n\nIn a real Devvit install, Sentinel sends this through the server endpoint, retrieves queue/rules/templates/audits first, then calls the configured external model. For this local Vite preview, use the visible modules as the context pack.`,
+          [
+            'Recommended action:',
+            'Use demo mode to practice the moderation workflow, then verify the same action in the live subreddit before confirming.',
+            '',
+            'Reasoning:',
+            `Local preview could not reach the Devvit server for "${payload.prompt}", so Sentinel is using a deterministic preview fallback.`,
+            '',
+            'Relevant rules:',
+            'Use subreddit rules, report reasons, saved responses, and consensus for high-impact cases.',
+            '',
+            'Suggested response:',
+            'Hi, thanks for reaching out. We are reviewing this against the community rules and will take the safest appropriate next step.',
+            '',
+            'Risk level:',
+            'medium',
+            '',
+            'Confidence:',
+            'low',
+            '',
+            'Next safe step:',
+            'Open the relevant module, gather context, and avoid live writes until a confirmation gate is shown.',
+            '',
+            'No action was performed:',
+            'This preview fallback did not touch Reddit.',
+          ].join('\n'),
         model: 'Preview local RAG',
         status: 'fallback',
         promptPreview: payload.prompt,
+        modelStatus: {
+          status: 'fallback',
+          provider: 'local',
+          model: 'preview-local-rag',
+          lastError: 'Devvit server was unavailable in local Vite preview.',
+        },
         sources: [
           {
             id: 'preview:queue',

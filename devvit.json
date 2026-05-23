@@ -36,6 +36,48 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
+      },
+      {
+        "label": "Open in ModDesk",
+        "description": "Open this item inside the ModDesk moderation workspace",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/open"
+      },
+      {
+        "label": "Open in ModDesk",
+        "description": "Open this comment inside the ModDesk moderation workspace",
+        "location": "comment",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/open"
+      },
+      {
+        "label": "Escalate to Consensus",
+        "description": "Prepare a consensus case for this moderation target",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/escalate"
+      },
+      {
+        "label": "Escalate to Consensus",
+        "description": "Prepare a consensus case for this comment",
+        "location": "comment",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/escalate"
+      },
+      {
+        "label": "Draft Safe Response",
+        "description": "Open Sentinel and prepare a safe draft response",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/draft"
+      },
+      {
+        "label": "Draft Safe Response",
+        "description": "Open Sentinel and prepare a safe draft response for this comment",
+        "location": "comment",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/draft"
       }
     ]
   },
