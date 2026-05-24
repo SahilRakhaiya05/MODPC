@@ -1,3 +1,5 @@
+export type WorkspaceMode = 'live' | 'training';
+
 export type AppSettings = {
   subredditName: string;
   initializedAt: string;
@@ -16,7 +18,7 @@ export type AppSettings = {
   anonymousVotesUntilClosed?: boolean;
   templateApprovalRequired?: boolean;
   scenarioDifficultyMix?: string;
-  workspaceMode?: 'live' | 'training';
+  workspaceMode?: WorkspaceMode;
   wallpaperId?: 'dotted' | 'wall1' | 'office-party' | 'plain';
   liveWritesEnabled?: boolean;
   liveModeEnabledBy?: string | null;

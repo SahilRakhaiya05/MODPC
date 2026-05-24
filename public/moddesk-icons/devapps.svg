@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- App tile (cube) -->
+  <rect x="8" y="12" width="32" height="32" rx="5" fill="#fffaf2" stroke="#18110c" stroke-width="2"/>
+  <!-- Inner 4-grid representing app icons -->
+  <rect x="13" y="17" width="9" height="9" rx="1.5" fill="#f45d22"/>
+  <rect x="26" y="17" width="9" height="9" rx="1.5" fill="#2fa36b"/>
+  <rect x="13" y="30" width="9" height="9" rx="1.5" fill="#3978e8"/>
+  <rect x="26" y="30" width="9" height="9" rx="1.5" fill="#f7c948"/>
+
+  <!-- Plug connector cable -->
+  <path d="M40 28 Q50 28 50 38" stroke="#18110c" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+
+  <!-- Plug head -->
+  <rect x="46" y="38" width="10" height="14" rx="2" fill="#18110c"/>
+  <rect x="48" y="34" width="2.5" height="6" fill="#18110c"/>
+  <rect x="51.5" y="34" width="2.5" height="6" fill="#18110c"/>
+
+  <!-- Spark / connected indicator -->
+  <circle cx="51" cy="56" r="2.4" fill="#2fa36b"/>
+  <circle cx="51" cy="56" r="4.5" fill="none" stroke="#2fa36b" stroke-width="1.2" opacity="0.5"/>
+</svg>

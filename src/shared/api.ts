@@ -394,7 +394,7 @@ export type AiChatResponse = {
   errorReason?: string;
   modelStatus: {
     status: AIStatus;
-    provider: 'groq' | 'none';
+    provider: 'groq' | 'openai' | 'gemini' | 'none';
     model?: string;
     lastError?: string;
     latencyMs?: number;
@@ -477,7 +477,7 @@ export type SessionState = {
   capabilities: CapabilityMatrixItem[];
   ai: {
     status: AIStatus;
-    provider: 'groq' | 'local' | 'none';
+    provider: 'groq' | 'openai' | 'gemini' | 'local' | 'none';
     model?: string;
     lastError?: string;
   };
@@ -598,10 +598,126 @@ export type UpdateSettingsRequest = Partial<
   >
 >;
 
+export type CommentCopAction = 'log_only' | 'remove';
+
+export type CommentCopSettings = {
+  enabled: boolean;
+  threshold: number;
+  action: CommentCopAction;
+  minTokenCount: number;
+  rollingWindowSize: number;
+  supabaseVerificationEnabled: boolean;
+  supabaseUrlConfigured: boolean;
+};
+
+export type CommentCopCase = {
+  id: string;
+  commentId: string;
+  postId: string;
+  author: string;
+  createdAt: string;
+  score: number;
+  matchedCommentId: string;
+  matchedAuthor: string;
+  action: CommentCopAction | 'ignored' | 'duplicate_trigger';
+  source: 'redis' | 'supabase' | 'redis_and_supabase';
+  excerpt: string;
+  matchedExcerpt: string;
+  reason: string;
+};
+
+export type CommentCopResponse = {
+  settings: CommentCopSettings;
+  cases: CommentCopCase[];
+  stats: {
+    scanned: number;
+    flagged: number;
+    removed: number;
+    duplicateTriggersBlocked: number;
+  };
+};
+
 export type ApiError = {
   status: 'error';
   code?: AuthErrorCode;
   message: string;
+};
+
+// ── Per-moderator scoped data (Phase 1) ────────────────────────────────
+export type ModPrefs = {
+  // Personal-only fields. Subreddit-level settings live on AppSettings.
+  themeMode: ThemeMode;
+  wallpaperId: WallpaperId;
+  notificationsEnabled: boolean;
+  notificationSound: boolean;
+  pinnedModules: string[];          // module ids the mod has pinned
+  dashboardLayout: 'grid' | 'list'; // home view density
+  compactWindows: boolean;
+  lastSeenChatAt: string | null;    // for unread counter
+  updatedAt: string;
+};
+
+export type ModPrefsResponse = {
+  prefs: ModPrefs;
+};
+
+export type NotificationCounts = {
+  chatUnread: number;
+  mentionUnread: number;
+  totalUnread: number;
+};
+
+// ── Team chat (Phase 2) ────────────────────────────────────────────────
+export type ChatMessage = {
+  id: string;
+  author: string;
+  authorRole: ModDeskRole;
+  body: string;
+  mentions: string[];
+  pinned: boolean;
+  createdAt: string;
+};
+
+export type ChatThreadResponse = {
+  messages: ChatMessage[];
+  pinned: ChatMessage[];
+  participants: string[];
+};
+
+export type PostChatMessageRequest = {
+  body: string;
+};
+
+// ── Owner admin + first-run (Phase 3) ──────────────────────────────────
+export type TeamMember = {
+  username: string;
+  role: ModDeskRole;
+  isYou: boolean;
+  isTopMod: boolean;
+  lastActiveAt: string | null;
+  permissions: string[];
+};
+
+export type OwnerTeamResponse = {
+  members: TeamMember[];
+  ownerUsername: string | null;
+  subredditName: string;
+};
+
+export type OwnerWorkspaceConfig = {
+  defaultWorkspaceMode: WorkspaceMode;
+  requireConfirmationOnLive: boolean;
+  allowTraineeAccess: boolean;
+  defaultThemeMode: ThemeMode;
+  welcomeMessage: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type FirstRunStatus = {
+  completed: boolean;
+  completedAt: string | null;
+  completedBy: string | null;
 };
 
 export const RULES = [

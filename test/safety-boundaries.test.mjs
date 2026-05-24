@@ -48,26 +48,42 @@ test('live queue writes require mode, permission, and confirmation gate', () => 
   assert.match(apiSource, /confirmation !== 'CONFIRM_LIVE_ACTION'/);
   assert.match(apiSource, /workspaceMode !== 'live'/);
   assert.match(apiSource, /liveWritesEnabled/);
+  assert.match(apiSource, /api\.post\('\/live\/queue\/action'/);
+  const liveQueueRoute = apiSource.slice(apiSource.indexOf("api.post('/live/queue/action'"));
+  assert.ok(liveQueueRoute.indexOf('requireLiveWrite') < liveQueueRoute.indexOf('reddit.approve'));
+  assert.ok(liveQueueRoute.indexOf('requireLiveWrite') < liveQueueRoute.indexOf('reddit.remove'));
 });
 
-test('demo queue actions are simulated before Reddit write APIs are reachable', () => {
-  const queueRoute = apiSource.slice(apiSource.indexOf("api.post('/queue/action'"));
-  const demoGuard = queueRoute.indexOf("settings.workspaceMode !== 'live'");
-  const firstApprove = queueRoute.indexOf('reddit.approve');
-  const firstRemove = queueRoute.indexOf('reddit.remove');
-  assert.ok(demoGuard > -1, 'queue route should branch on Demo / Training Mode');
-  assert.ok(demoGuard < firstApprove, 'demo guard must run before reddit.approve');
-  assert.ok(demoGuard < firstRemove, 'demo guard must run before reddit.remove');
+test('demo queue route is physically separated from Reddit write APIs', () => {
+  assert.match(apiSource, /function assertNeverLiveWriteInDemo/);
+  assert.match(apiSource, /api\.post\('\/demo\/queue\/action'/);
+  const demoQueueRoute = apiSource.slice(
+    apiSource.indexOf("api.post('/demo/queue/action'"),
+    apiSource.indexOf("api.post('/live/queue/action'")
+  );
+  assert.match(demoQueueRoute, /result: 'simulated'/);
+  assert.equal(demoQueueRoute.includes('reddit.approve'), false);
+  assert.equal(demoQueueRoute.includes('reddit.remove'), false);
+  assert.equal(demoQueueRoute.includes('reddit.updateWikiPage'), false);
 });
 
 test('automod and modmail live writes are confirmation-gated', () => {
-  const automodRoute = apiSource.slice(apiSource.indexOf("api.post('/wiki/automod'"));
-  assert.ok(automodRoute.indexOf("settings.workspaceMode !== 'live'") < automodRoute.indexOf('reddit.updateWikiPage'));
-  assert.ok(automodRoute.includes("requireLiveWrite(modContext, confirmation, 'wiki')"));
+  const automodRoute = apiSource.slice(apiSource.indexOf("api.post('/live/automod'"));
+  assert.ok(automodRoute.indexOf("requireLiveWrite(modContext, confirmation, 'wiki')") < automodRoute.indexOf('reddit.updateWikiPage'));
+  const demoAutomodRoute = apiSource.slice(
+    apiSource.indexOf("api.post('/demo/automod'"),
+    apiSource.indexOf("api.get('/live/automod'")
+  );
+  assert.equal(demoAutomodRoute.includes('reddit.updateWikiPage'), false);
 
   const modmailRoute = apiSource.slice(apiSource.indexOf("api.post('/live/modmail/reply'"));
   assert.ok(modmailRoute.indexOf("settings.workspaceMode === 'live'") < modmailRoute.indexOf('reddit.modMail.reply'));
   assert.ok(modmailRoute.includes("requireLiveWrite(modContext, confirmation, 'mail')"));
+  const demoModmailRoute = apiSource.slice(
+    apiSource.indexOf("api.post('/demo/modmail/reply'"),
+    apiSource.indexOf("api.post('/queue/action'")
+  );
+  assert.equal(demoModmailRoute.includes('reddit.modMail.reply'), false);
 });
 
 test('Reddit Developer Platform links are present in the UI module', () => {

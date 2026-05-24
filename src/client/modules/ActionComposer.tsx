@@ -3,7 +3,6 @@ import type { ComposerDraftRequest, ComposerDraftResponse } from '../../shared/a
 import { api } from '../utils/api';
 
 type ActionComposerProps = {
-  mode: 'demo' | 'live';
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
   openConsensus: () => void;
   openSentinel: () => void;
@@ -12,7 +11,7 @@ type ActionComposerProps = {
 const targetTypes: ComposerDraftRequest['targetType'][] = ['post', 'comment', 'user', 'modmail', 'automod', 'announcement'];
 const actionIntents: ComposerDraftRequest['actionIntent'][] = ['approve', 'remove', 'escalate', 'reply', 'archive', 'draft_automod', 'create_consensus'];
 
-export const ActionComposer: React.FC<ActionComposerProps> = ({ mode, triggerToast, openConsensus, openSentinel }) => {
+export const ActionComposer: React.FC<ActionComposerProps> = ({ triggerToast, openConsensus, openSentinel }) => {
   const [targetType, setTargetType] = useState<ComposerDraftRequest['targetType']>('comment');
   const [actionIntent, setActionIntent] = useState<ComposerDraftRequest['actionIntent']>('reply');
   const [targetId, setTargetId] = useState('');
@@ -49,8 +48,8 @@ export const ActionComposer: React.FC<ActionComposerProps> = ({ mode, triggerToa
         </div>
         <div className="ops-status-card">
           <span>Workspace</span>
-          <strong>{mode === 'live' ? 'Live guarded' : 'Training sandbox'}</strong>
-          <em>{mode === 'live' ? 'Real context only' : 'Demo cases allowed'}</em>
+          <strong>Live guarded</strong>
+          <em>Real Reddit context only</em>
         </div>
       </header>
 

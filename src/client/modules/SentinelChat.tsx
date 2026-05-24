@@ -29,7 +29,7 @@ const initialMessage: ChatBubble = {
   id: 'sentinel-welcome',
   role: 'assistant',
   content:
-    'I’m Sentinel, your Reddit moderation assistant. I can help triage reports, explain subreddit rules, draft modmail replies, summarize queue pressure, generate training cases, review Automod changes, and prepare consensus tickets.',
+    "I'm Sentinel, your Reddit moderation assistant. I can help triage reports, explain subreddit rules, draft modmail replies, summarize queue pressure, review Automod changes, prepare consensus tickets, and investigate repeated bot patterns.",
   model: 'ModDesk Sentinel',
   sources: [],
 };
@@ -118,7 +118,7 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
         <div>
           <span className="module-eyebrow">Groq moderation assistant</span>
           <h3>Sentinel AI Chat</h3>
-          <p>Uses Groq for ChatGPT-style moderation help, with optional ModDesk workspace context and source references.</p>
+          <p>Uses Groq chat completions for Reddit moderation help, with optional ModDesk workspace context and source references.</p>
         </div>
         <div className="sentinel-status">
           <strong>{loading ? 'Thinking' : latestModelStatus.provider === 'groq' && latestModelStatus.status === 'connected' ? 'Groq Connected' : latestModelStatus.status === 'disabled' ? 'AI Not Configured' : 'Needs Attention'}</strong>
@@ -145,7 +145,7 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
         ))}
       </nav>
 
-      <div className="sentinel-layout">
+      <div className={`sentinel-layout sentinel-view-${activeTab}`}>
         <section className="sentinel-thread" aria-label="Sentinel chat messages" hidden={activeTab !== 'ask' && activeTab !== 'drafts'}>
           <div className="sentinel-messages">
             {messages.map((message) => (
@@ -239,7 +239,7 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
               <span>{latestModelStatus.provider} / {latestModelStatus.model ?? 'unknown model'}</span>
               <p>{latestModelStatus.lastError ?? 'No model error reported.'}</p>
               {latestModelStatus.latencyMs && <em>{latestModelStatus.latencyMs}ms</em>}
-              <small>No Reddit action is performed by Sentinel chat.</small>
+              <small>Network error 7 means Devvit has not approved that exact external host for this app. Sentinel never performs Reddit actions from chat.</small>
             </div>
           ) : activeTab === 'prompt' ? (
             <div className="sentinel-prompt-preview">

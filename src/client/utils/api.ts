@@ -6,13 +6,22 @@ import {
 import type {
   AiChatRequest,
   AiChatResponse,
+  ChatMessage,
+  ChatThreadResponse,
   ComposerDraftRequest,
   ComposerDraftResponse,
   CrisisRadarResponse,
   CreateHandoffRequest,
   DashboardResponse,
+  FirstRunStatus,
   HandoffResponse,
   LiveInsightResponse,
+  CommentCopResponse,
+  CommentCopSettings,
+  ModPrefs,
+  NotificationCounts,
+  OwnerTeamResponse,
+  OwnerWorkspaceConfig,
   SentinelSettingsResponse,
   SessionResponse,
   SubmitAttemptResponse,
@@ -555,8 +564,10 @@ export const api = {
     actionType: string;
     notes?: string;
     confirmation?: boolean;
+    mode?: 'demo' | 'live';
   }): Promise<{ success: boolean; queue: QueueItem[]; moderatorProfile: ModeratorProfile }> {
-    await apiFetch<any>('/queue/action', {
+    const route = payload.mode === 'demo' ? '/demo/queue/action' : '/live/queue/action';
+    await apiFetch<any>(route, {
       method: 'POST',
       body: JSON.stringify({
         itemId: payload.itemId,
@@ -581,12 +592,12 @@ export const api = {
     return { audits: statusData.recentAudits };
   },
 
-  async getAutomod(): Promise<{ content: string }> {
-    return await apiFetch<{ content: string }>('/wiki/automod');
+  async getAutomod(mode: 'demo' | 'live' = 'live'): Promise<{ content: string }> {
+    return await apiFetch<{ content: string }>(mode === 'demo' ? '/demo/automod' : '/live/automod');
   },
 
-  async saveAutomod(content: string, reason: string, confirmation?: boolean): Promise<{ success: boolean }> {
-    return await apiFetch<{ success: boolean }>('/wiki/automod', {
+  async saveAutomod(content: string, reason: string, confirmation?: boolean, mode: 'demo' | 'live' = 'live'): Promise<{ success: boolean }> {
+    return await apiFetch<{ success: boolean }>(mode === 'demo' ? '/demo/automod' : '/live/automod', {
       method: 'POST',
       body: JSON.stringify({ content, reason, confirmation: confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
@@ -623,15 +634,15 @@ export const api = {
     return await apiFetch<{ conversations: LiveModmailThread[] }>('/live/modmail');
   },
 
-  async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean; confirmation?: boolean }): Promise<{ success: boolean; thread?: any }> {
-    return await apiFetch<{ success: boolean; thread?: any }>('/live/modmail/reply', {
+  async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean; confirmation?: boolean; mode?: 'demo' | 'live' }): Promise<{ success: boolean; thread?: any }> {
+    return await apiFetch<{ success: boolean; thread?: any }>(payload.mode === 'demo' ? '/demo/modmail/reply' : '/live/modmail/reply', {
       method: 'POST',
       body: JSON.stringify({ ...payload, confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
   },
 
-  async actionModmail(payload: { threadId: string; action: 'archive' | 'unarchive' | 'highlight' | 'delete'; confirmation?: boolean }): Promise<{ success: boolean }> {
-    return await apiFetch<{ success: boolean }>('/live/modmail/action', {
+  async actionModmail(payload: { threadId: string; action: 'archive' | 'unarchive' | 'highlight' | 'delete'; confirmation?: boolean; mode?: 'demo' | 'live' }): Promise<{ success: boolean }> {
+    return await apiFetch<{ success: boolean }>(payload.mode === 'demo' ? '/demo/modmail/action' : '/live/modmail/action', {
       method: 'POST',
       body: JSON.stringify({ ...payload, confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
@@ -654,6 +665,17 @@ export const api = {
 
   async getLiveEvents(): Promise<{ events: Array<{ id: string; kind: string; createdAt: string; actor?: string | null; target?: string | null; summary: string }> }> {
     return await apiFetch('/live/events');
+  },
+
+  async getCommentCop(): Promise<CommentCopResponse> {
+    return await apiFetch<CommentCopResponse>('/live/commentcop');
+  },
+
+  async updateCommentCop(settings: Partial<CommentCopSettings>): Promise<CommentCopResponse> {
+    return await apiFetch<CommentCopResponse>('/live/commentcop/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
   },
 
   async getRadar(): Promise<CrisisRadarResponse> {
@@ -841,6 +863,78 @@ export const api = {
 
   async getRemovalReasons(): Promise<{ reasons: Array<{ id: string; title: string; message: string }> }> {
     return await apiFetch('/live/removal-reasons');
+  },
+
+  // ── Per-mod scoped (Phase 1) ─────────────────────────────────────────
+  async getModPrefs(): Promise<{ prefs: ModPrefs }> {
+    return await apiFetch<{ prefs: ModPrefs }>('/mod/prefs');
+  },
+
+  async saveModPrefs(prefs: Partial<ModPrefs>): Promise<{ prefs: ModPrefs }> {
+    return await apiFetch<{ prefs: ModPrefs }>('/mod/prefs', {
+      method: 'POST',
+      body: JSON.stringify(prefs),
+    });
+  },
+
+  async getNotifications(): Promise<NotificationCounts> {
+    return await apiFetch<NotificationCounts>('/mod/notifications');
+  },
+
+  async markNotificationsRead(): Promise<{ ok: boolean; lastSeenChatAt: string }> {
+    return await apiFetch<{ ok: boolean; lastSeenChatAt: string }>('/mod/notifications/read', {
+      method: 'POST',
+    });
+  },
+
+  // ── Team chat (Phase 2) ─────────────────────────────────────────────
+  async getTeamChat(since?: string): Promise<ChatThreadResponse> {
+    const qs = since ? `?since=${encodeURIComponent(since)}` : '';
+    return await apiFetch<ChatThreadResponse>(`/team/chat${qs}`);
+  },
+
+  async postTeamChat(body: string): Promise<{ message: ChatMessage }> {
+    return await apiFetch<{ message: ChatMessage }>('/team/chat', {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+  },
+
+  async pinTeamChat(messageId: string, pinned?: boolean): Promise<{ message: ChatMessage }> {
+    return await apiFetch<{ message: ChatMessage }>('/team/chat/pin', {
+      method: 'POST',
+      body: JSON.stringify({ messageId, pinned }),
+    });
+  },
+
+  async deleteTeamChat(messageId: string): Promise<{ ok: boolean }> {
+    return await apiFetch<{ ok: boolean }>(`/team/chat/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // ── Owner admin + first-run (Phase 3) ───────────────────────────────
+  async getOwnerTeam(): Promise<OwnerTeamResponse> {
+    return await apiFetch<OwnerTeamResponse>('/owner/team');
+  },
+
+  async getOwnerConfig(): Promise<{ config: OwnerWorkspaceConfig }> {
+    return await apiFetch<{ config: OwnerWorkspaceConfig }>('/owner/config');
+  },
+
+  async saveOwnerConfig(config: Partial<OwnerWorkspaceConfig>): Promise<{ config: OwnerWorkspaceConfig }> {
+    return await apiFetch<{ config: OwnerWorkspaceConfig }>('/owner/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async getSetupStatus(): Promise<FirstRunStatus> {
+    return await apiFetch<FirstRunStatus>('/setup/status');
+  },
+
+  async completeSetup(): Promise<FirstRunStatus> {
+    return await apiFetch<FirstRunStatus>('/setup/complete', { method: 'POST' });
   },
 
   async lookupUser(username: string): Promise<{

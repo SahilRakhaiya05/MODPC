@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import { UserDossier } from '../components/UserDossier';
 
 type ModmailHubProps = {
+  mode: 'demo' | 'live';
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
 };
 
@@ -51,7 +52,7 @@ const macros = [
   },
 ];
 
-export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
+export const ModmailHub: React.FC<ModmailHubProps> = ({ mode, triggerToast }) => {
   const [conversations, setConversations] = useState<ModmailThread[]>([]);
   const [activeFolder, setActiveFolder] = useState<FolderType>('inbox');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -94,10 +95,14 @@ export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
         threadId: selectedThreadId,
         body: replyText,
         isInternal: isInternalNote,
+        mode,
       });
 
       if (res.success) {
-        triggerToast(isInternalNote ? 'Internal moderator note added.' : 'Modmail reply sent.', 'success');
+        triggerToast(
+          isInternalNote ? 'Internal moderator note added.' : 'Modmail reply sent.',
+          'success'
+        );
         setReplyText('');
         await fetchModmail();
       }
@@ -111,7 +116,7 @@ export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
   const handleAction = async (action: 'archive' | 'unarchive' | 'delete') => {
     if (!selectedThreadId) return;
     try {
-      const res = await api.actionModmail({ threadId: selectedThreadId, action });
+      const res = await api.actionModmail({ threadId: selectedThreadId, action, mode });
       if (res.success) {
         triggerToast(`Conversation ${action === 'archive' ? 'archived' : 'updated'}.`, 'success');
         await fetchModmail();
@@ -138,7 +143,7 @@ export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
   return (
     <div className="modmail-shell">
       <aside className="modmail-pane modmail-folders">
-        <div className="module-eyebrow">Modmail mailbox</div>
+        <div className="module-eyebrow">Live modmail mailbox</div>
         {folders.map((folder) => {
           const isSelected = activeFolder === folder.id;
           const count = conversations.filter((thread) => thread.folder === folder.id).length;
@@ -247,7 +252,7 @@ export const ModmailHub: React.FC<ModmailHubProps> = ({ triggerToast }) => {
                   Internal mod note
                 </label>
                 <button onClick={handleSendReply} className="glass-btn primary" disabled={submitting || !replyText.trim()}>
-                  {submitting ? 'Sending...' : 'Send message'}
+                  {submitting ? 'Sending...' : 'Reply in Modmail'}
                 </button>
               </div>
             </footer>

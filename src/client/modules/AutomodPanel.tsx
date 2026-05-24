@@ -23,7 +23,7 @@ export const AutomodPanel: React.FC<AutomodPanelProps> = ({ mode, triggerToast }
   const loadRules = async () => {
     setLoading(true);
     try {
-      const res = await api.getAutomod();
+      const res = await api.getAutomod(mode);
       setYaml(res.content);
       setOriginalYaml(res.content);
       setConfirmPublish(false);
@@ -145,8 +145,8 @@ action_reason: "High hostility toxicity warning trigger"
     }
     try {
       setLoading(true);
-      await api.saveAutomod(yaml, reason, mode === 'live' && confirmPublish);
-      triggerToast(mode === 'live' ? 'Wiki config/automod committed successfully!' : 'Simulated Automod save stored in Demo / Training Mode.', 'success');
+      await api.saveAutomod(yaml, reason, mode === 'live' && confirmPublish, mode);
+      triggerToast('Wiki config/automod committed successfully.', 'success');
       setValidationReport({ status: 'idle', message: '', errors: [] });
       setOriginalYaml(yaml);
       setConfirmPublish(false);
@@ -170,10 +170,10 @@ action_reason: "High hostility toxicity warning trigger"
             AUTOMODERATOR SYNTAX CONTROLLER
           </h3>
           <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-mono)' }}>
-            LOADED SOURCE: /wiki/config/automod
+            LOADED SOURCE: /api/live/automod {'->'} /wiki/config/automod
           </span>
-          <span style={{ display: 'block', marginTop: '4px', fontSize: '10px', color: mode === 'live' ? '#f59e0b' : '#34d399', fontFamily: 'var(--font-mono)' }}>
-            {mode === 'live' ? 'LIVE REDDIT MODE - publishing affects Reddit after confirmation' : 'DEMO / TRAINING MODE - saves only to the Automod sandbox'}
+          <span style={{ display: 'block', marginTop: '4px', fontSize: '10px', color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>
+            LIVE REDDIT MODE - publishing affects Reddit after confirmation
           </span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -224,7 +224,7 @@ action_reason: "High hostility toxicity warning trigger"
               style={{ flexGrow: 1, fontSize: '11px', padding: '6px 12px' }}
             />
             <button className="glass-btn primary" onClick={saveRules} disabled={loading || validationReport.status !== 'success' || !confirmPublish}>
-              Publish guarded
+              Save Automod to Reddit
             </button>
           </div>
         </div>
@@ -274,9 +274,7 @@ action_reason: "High hostility toxicity warning trigger"
                   checked={confirmPublish}
                   onChange={(event) => setConfirmPublish(event.target.checked)}
                 />
-                {mode === 'live'
-                  ? 'I understand this publishes to the live Automod wiki for this community.'
-                  : 'I understand this is a simulated sandbox save and will not affect Reddit.'}
+                I understand this publishes to the live Automod wiki for this community.
               </label>
             </div>
             {validationReport.status === 'idle' && (

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CommentCop icon">
+  <rect x="8" y="8" width="48" height="48" rx="8" fill="#e5f4ff" stroke="#18110c" stroke-width="3"/>
+  <path d="M18 24h28v16H31l-7 7v-7h-6z" fill="#ffffff" stroke="#18110c" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M32 13l13 5v10c0 10-5 17-13 21-8-4-13-11-13-21V18z" fill="#2fa36b" stroke="#18110c" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M26 30l4 4 9-10" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

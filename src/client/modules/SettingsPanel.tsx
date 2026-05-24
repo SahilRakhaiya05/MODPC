@@ -28,13 +28,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [communities, setCommunities] = useState<SubredditInstall[]>(session?.installs ?? []);
   const [consensusThresholdMode, setConsensusThresholdMode] = useState(settings.consensusThresholdMode);
   const [consensusFixedCount, setConsensusFixedCount] = useState(settings.consensusFixedCount);
-  const [trainingRequiredLevel, setTrainingRequiredLevel] = useState(settings.trainingRequiredLevel);
   const [themeMode, setThemeMode] = useState(settings.themeMode);
-  const [workspaceMode, setWorkspaceMode] = useState<'live' | 'training'>(settings.workspaceMode ?? 'live');
+  const workspaceMode = 'live' as const;
   const [wallpaperId, setWallpaperId] = useState<'dotted' | 'wall1' | 'office-party' | 'plain'>(
     settings.wallpaperId ?? 'wall1'
   );
-  const [liveWritesEnabled, setLiveWritesEnabled] = useState(Boolean(settings.liveWritesEnabled));
+  const liveWritesEnabled = true;
   const [sentinelSettings, setSentinelSettings] = useState<SentinelSettingsResponse | null>(null);
   const [groqApiKey, setGroqApiKey] = useState('');
   const [groqModel, setGroqModel] = useState(settings.sentinelModel ?? 'llama-3.3-70b-versatile');
@@ -137,7 +136,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       const settingsResult = await api.getSentinelSettings();
       setSentinelSettings(settingsResult);
     } catch (err) {
-      triggerToast(err instanceof Error ? err.message : 'Groq test failed.', 'error');
+      triggerToast(err instanceof Error ? err.message : 'AI connection test failed.', 'error');
     } finally {
       setGroqBusy(false);
     }
@@ -168,11 +167,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         subredditName,
         consensusThresholdMode,
         consensusFixedCount: Number(consensusFixedCount),
-        trainingRequiredLevel: Number(trainingRequiredLevel),
+        trainingRequiredLevel: settings.trainingRequiredLevel,
         themeMode,
         workspaceMode,
         wallpaperId,
-        liveWritesEnabled: workspaceMode === 'live' && liveWritesEnabled,
+        liveWritesEnabled,
       });
 
       if (res.success) {
@@ -306,31 +305,44 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               );
             })}
             <article>
-              <strong>AI</strong>
-              <span className={sentinelSettings?.hasApiKey ? 'available' : 'unavailable'}>{sentinelSettings?.hasApiKey ? 'Groq ready' : 'Needs Groq key'}</span>
-              <em>Sentinel uses Groq directly. If Groq is blocked or not configured, it shows the real error instead of a fake local answer.</em>
+              <strong>AI Status</strong>
+              <span className={sentinelSettings?.hasApiKey ? 'available' : 'unavailable'}>{sentinelSettings?.hasApiKey ? 'AI ready' : 'Needs key'}</span>
+              <em>Sentinel supports Groq, OpenAI, and Gemini. OpenAI and Gemini are globally allowlisted by Reddit and work instantly!</em>
             </article>
           </div>
         </section>
 
         <section className="settings-card">
-          <span className="module-eyebrow">Groq setup</span>
+          <span className="module-eyebrow">Sentinel AI setup</span>
           <div className="settings-groq-box">
-            <strong>{sentinelSettings?.hasApiKey ? 'Groq API key saved server-side' : 'Sentinel AI is not configured'}</strong>
-            <p>ModDesk never exposes <code>GROQ_API_KEY</code> to the client. Sentinel uses Groq directly; if Devvit blocks <code>api.groq.com</code>, the chat shows that network permission error.</p>
+            <strong>{sentinelSettings?.hasApiKey ? 'AI API key saved server-side' : 'Sentinel AI is not configured'}</strong>
+            <p>
+              Sentinel supports multiple AI providers. 
+        
+            </p>
           </div>
           <div className="settings-fields">
             <label>
-              <span>Groq API key</span>
-              <input type="password" value={groqApiKey} onChange={(event) => setGroqApiKey(event.target.value)} placeholder={sentinelSettings?.hasApiKey ? 'Saved server-side - enter a new key to replace' : 'gsk_...'} className="glass-input" autoComplete="off" />
+              <span>AI API key</span>
+              <input type="password" value={groqApiKey} onChange={(event) => setGroqApiKey(event.target.value)} placeholder={sentinelSettings?.hasApiKey ? 'Saved server-side - enter a new key to replace' : 'Enter API key (gsk_..., sk-..., AIzaSy...)'} className="glass-input" autoComplete="off" />
             </label>
             <label>
               <span>Model</span>
               <select value={groqModel} onChange={(event) => setGroqModel(event.target.value)} className="glass-input">
-                <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
-                <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
-                <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
-                <option value="gemma2-9b-it">gemma2-9b-it</option>
+                <optgroup label="OpenAI">
+                  <option value="gpt-4o-mini">gpt-4o-mini (Fast & Recommended)</option>
+                  <option value="gpt-4o">gpt-4o (High Intelligence)</option>
+                </optgroup>
+                <optgroup label="Gemini">
+                  <option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Native)</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash (Next-Gen)</option>
+                </optgroup>
+                <optgroup label="Groq">
+                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                  <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                  <option value="gemma2-9b-it">gemma2-9b-it</option>
+                </optgroup>
               </select>
             </label>
             <label>
@@ -348,25 +360,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className={sentinelSettings?.lastError ? 'unavailable' : sentinelSettings?.lastSuccessAt ? 'available' : 'limited'}>
                 {sentinelSettings?.lastSuccessAt ? 'Last test passed' : sentinelSettings?.lastError ? 'Needs attention' : 'Not tested'}
               </span>
-              <em>{sentinelSettings?.lastError ?? (sentinelSettings?.lastLatencyMs ? `${sentinelSettings.lastLatencyMs}ms latency` : 'Use Test Groq Connection before relying on Sentinel.')}</em>
+              <em>{sentinelSettings?.lastError ?? (sentinelSettings?.lastLatencyMs ? `${sentinelSettings.lastLatencyMs}ms latency` : 'Use Test Connection before relying on Sentinel.')}</em>
             </article>
             <article>
               <strong>Workspace context</strong>
               <span className={ragEnabled ? 'available' : 'limited'}>{ragEnabled ? 'Enabled' : 'Disabled'}</span>
-              <em>Indexes rules, Automod, queue, templates, modmail when allowed, consensus, audit, and training context.</em>
+              <em>Indexes rules, Automod, queue, templates, modmail when allowed, consensus, audit, and live workspace context.</em>
             </article>
           </div>
           <label className="settings-live-write-toggle">
             <input type="checkbox" checked={ragEnabled} onChange={(event) => setRagEnabled(event.target.checked)} />
-            <span>Enable workspace context and source citations. Turn this off for a more general ChatGPT-style assistant.</span>
+            <span>Enable workspace context and source citations. Turn this off when you only want a direct AI answer without ModDesk retrieval.</span>
           </label>
           <label className="settings-live-write-toggle">
             <input type="checkbox" checked={automationEnabled} onChange={(event) => setAutomationEnabled(event.target.checked)} />
             <span>Allow Sentinel automations to draft, summarize, classify, and recommend. Destructive live actions still require human confirmation.</span>
           </label>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button type="button" className="glass-btn primary" disabled={groqBusy} onClick={() => void saveGroqSettings()}>Save Sentinel settings</button>
-            <button type="button" className="glass-btn" disabled={groqBusy} onClick={() => void testGroq()}>Test Groq Connection</button>
+            <button type="button" className="glass-btn primary" disabled={groqBusy} onClick={() => void saveGroqSettings()}>Save AI settings</button>
+            <button type="button" className="glass-btn" disabled={groqBusy} onClick={() => void testGroq()}>Test AI Connection</button>
             <button type="button" className="glass-btn" disabled={groqBusy} onClick={() => void rebuildRag()}>Refresh Context</button>
           </div>
         </section>
@@ -390,43 +402,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </section>
 
         <section className="settings-card">
-          <span className="module-eyebrow">Workspace mode</span>
-          <div className="settings-mode-toggle" role="radiogroup" aria-label="Workspace mode">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workspaceMode === 'live'}
-              className={workspaceMode === 'live' ? 'active' : ''}
-              onClick={() => setWorkspaceMode('live')}
-            >
-              <strong>Live Reddit Mode</strong>
-              <span>Loads real Reddit data. Destructive actions require Reddit moderator permission, owner/admin enablement, and CONFIRM_LIVE_ACTION.</span>
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workspaceMode === 'training'}
-              className={workspaceMode === 'training' ? 'active' : ''}
-              onClick={() => setWorkspaceMode('training')}
-            >
-              <strong>Demo / Training Mode</strong>
-              <span>Real Reddit content may be previewed for training, but actions are simulated and will not affect Reddit.</span>
-            </button>
-          </div>
-          <label className="settings-live-write-toggle">
-            <input
-              type="checkbox"
-              checked={liveWritesEnabled}
-              disabled={workspaceMode !== 'live'}
-              onChange={(event) => setLiveWritesEnabled(event.target.checked)}
-            />
-            <span>
-              Enable live Reddit writes for approved moderators.
-              {settings.liveModeEnabledBy && settings.liveModeEnabledAt
-                ? ` Enabled by u/${settings.liveModeEnabledBy} on ${new Date(settings.liveModeEnabledAt).toLocaleString()}.`
-                : ' Live writes are locked by default.'}
+          <span className="module-eyebrow">Live Reddit writes</span>
+          <p className="settings-card-note">
+            ModDesk is configured to run as a live Reddit console. Moderation actions (such as approve, remove, ban, mute, save Automod, and modmail replies) are **live-enabled by default** for real-time moderator operations.
+          </p>
+          <div className="settings-live-writes-status-badge" style={{ marginTop: '12px', padding: '12px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <strong style={{ color: 'rgb(34, 197, 94)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgb(34, 197, 94)', display: 'inline-block', boxShadow: '0 0 8px rgb(34, 197, 94)' }}></span>
+              Console Status: Active & Writing Live
+            </strong>
+            <span style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+              ModDesk is directly connected to the Reddit API. Actions will take effect immediately in r/{currentCommunity}.
             </span>
-          </label>
+          </div>
         </section>
 
         <section className="settings-card">
@@ -458,24 +446,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
             </label>
           </div>
-        </section>
-
-        <section className="settings-card">
-          <span className="module-eyebrow">Onboarding</span>
-          <label className="settings-range">
-            <span>Minimum training level</span>
-            <div>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={trainingRequiredLevel}
-                onChange={(event) => setTrainingRequiredLevel(Number(event.target.value))}
-              />
-              <strong>Lvl {trainingRequiredLevel}</strong>
-            </div>
-            <em>Mods below this level can train before working live queue actions.</em>
-          </label>
         </section>
 
         <section className="settings-card">
@@ -554,7 +524,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </header>
             <div className="settings-modal-body">
               <h4 id="settings-reset-title">Factory reset ModDesk data?</h4>
-              <p>This reseeds the subreddit-scoped Redis workspace: profiles, training progress, consensus tickets, templates, and queued local records.</p>
+              <p>This reseeds the subreddit-scoped Redis workspace: profiles, consensus tickets, templates, audit records, and queued local records.</p>
               <div>
                 <span>Target process</span>
                 <strong>ModDesk_DB_Seeding.reset_to_factory_defaults()</strong>

@@ -83,6 +83,7 @@
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install",
+    "onCommentCreate": "/internal/triggers/on-comment-create",
     "onPostReport": "/internal/triggers/on-post-report",
     "onCommentReport": "/internal/triggers/on-comment-report",
     "onModAction": "/internal/triggers/on-mod-action",

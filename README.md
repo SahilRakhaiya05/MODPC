@@ -1,106 +1,79 @@
 # ModDesk OS
 
-ModDesk OS is a private Reddit Devvit Web workspace for volunteer subreddit moderator teams. It brings queue triage, training, consensus governance, Automod editing, modmail handling, saved responses, user lists, audit logs, and Reddit Developer Platform links into one moderator-only operations surface.
+ModDesk OS is a live Reddit moderator desktop built with Devvit Web, React, Hono, and tRPC. It is designed for real subreddit operations: queue triage, modmail, Automod, saved responses, consensus decisions, user lists, audit logs, Sentinel AI, Native Reddit Bridge, Developer Apps, and CommentCop anti-bot monitoring.
 
-The app is built for subreddit owners/top mods, senior moderators, active queue moderators, trainees, and read-only observers. Normal Reddit users must not see moderator queues, modmail, user registries, audit logs, or live-case training content.
+There is no user-facing demo or training workspace in the current product. The visible app is a live Reddit console. Any action that can change Reddit is permission-gated, confirmation-gated, and audited.
 
-## Modes
+## Live Safety
 
-**Demo / Training Mode** is the default. It may preview real Reddit-derived content when an authenticated moderator has read access, but every action is simulated. Demo writes are stored under the demo namespace and never call Reddit write APIs. Buttons and audit entries label these actions as simulated.
+Live writes are locked by default. Approve, remove, ban, mute, Automod save, and modmail reply flows require:
 
-**Live Reddit Mode** loads real Reddit moderation data and can perform Reddit writes only when all safety gates pass: authenticated Reddit user, subreddit moderator status, matching Reddit moderator permission, ModDesk role permission, owner/admin live-write enablement, and server-side `CONFIRM_LIVE_ACTION`.
+- Authenticated Reddit user.
+- Subreddit moderator status.
+- Matching Reddit moderator permission.
+- ModDesk role permission.
+- Owner/admin live-write enablement.
+- Explicit confirmation at the call site.
 
-## Owner Setup
+Unsupported Reddit-native settings are not faked. ModDesk uses official Devvit APIs where available and opens official Reddit pages through Native Reddit Bridge where in-app APIs or iframe embedding are not supported.
 
-1. Install ModDesk OS in a subreddit from Reddit Developer Platform.
-2. Open ModDesk OS from the subreddit moderator menu.
-3. Confirm the detected subreddit and Reddit identity.
-4. Keep Demo / Training Mode enabled while onboarding.
-5. Configure consensus thresholds, training requirements, audit retention, and live-write enablement.
-6. Invite or approve moderators and trainees according to subreddit policy.
+## CommentCop
 
-Live writes are locked by default. Enabling them is audited with actor, role, subreddit, mode, timestamp, and before/after settings.
+CommentCop is the anti-bot similarity shield for copied comments.
 
-## Access Model
+- Registers `onCommentCreate` in `devvit.json`.
+- Uses Redis `hSetNX` locks so duplicate Devvit trigger deliveries do not double-process the same comment.
+- Stores a rolling per-post comment index under `moddesk-os:v1:{subreddit}:live:commentcop:*`.
+- Computes Jaccard token-overlap similarity:
 
-ModDesk derives a safe default role from Reddit moderator context:
+```text
+J(A, B) = |A intersection B| / |A union B|
+```
 
-- **Owner**: top mod or moderator with `all` permission; can configure workspace settings and enable live writes.
-- **Admin**: senior moderator with elevated permissions such as config, wiki, mail, access, or posts.
-- **Moderator**: can read workspace tools and perform allowed live actions when granted and confirmed.
-- **Trainee**: intended for Demo / Training Mode and shadow workflows.
-- **Observer**: read-only posture.
+- Flags copied comments when the configured threshold is met, defaulting to `0.85`.
+- Can log only or remove duplicate comments on Reddit when live writes and app permissions allow it.
+- Can optionally call a Supabase Edge Function for historical vector verification, but Devvit HTTP fetch requires the exact Supabase HTTPS host to be allow-listed in `devvit.json`.
 
-Every backend route checks Reddit authentication and moderator status. Destructive routes additionally check workspace mode, ModDesk role, Reddit moderator permission, live-write enablement, and confirmation.
+Required optional env vars for Supabase verification:
 
-## Reddit Authentication
+```bash
+SUPABASE_COMMENTCOP_URL=https://your-project.supabase.co
+SUPABASE_COMMENTCOP_KEY=...
+```
 
-The server uses Devvit Web server context:
-
-- `reddit.getCurrentUsername()`
-- `context.subredditName`
-- `reddit.getModerators()`
-- subreddit, modqueue, rules, modlog, wiki, user-list, and modmail APIs where supported
-
-If Reddit identity or moderator checks fail, the app defaults to access denied or read-only behavior. It does not allow live writes when auth state is unknown.
-
-## Supported Actions
-
-Implemented or wired through Devvit Reddit APIs where available:
-
-- Fetch reports and modqueue-style queue items.
-- Approve or remove posts/comments.
-- Fetch subreddit rules.
-- Fetch and update `config/automod` wiki with validation, confirmation, and audit gates.
-- Fetch native moderation log.
-- Fetch banned, muted, approved, and moderator lists.
-- Ban/unban, mute/unmute, approve/unapprove users.
-- Fetch modmail conversations.
-- Reply to modmail, add internal notes, archive/unarchive conversations.
-- Fetch post and user flair templates.
-
-## Simulated Or Read-Only Areas
-
-Some Reddit settings are not safely exposed as in-app Devvit management APIs. ModDesk does not fake unsupported install/delete/settings behavior. These areas are labeled read-only, simulated, or "Managed on Reddit Developer Platform" and deep-link to official Reddit pages when appropriate.
-
-Flair template editing is currently stored locally and labeled as ModDesk-managed/simulated unless an official write API is added and audited.
-
-## Reddit Developer Apps
-
-The **Developer Apps** module includes official links:
-
-- [Reddit Developer Apps](https://developers.reddit.com/apps)
-- [Reddit Developer Docs](https://developers.reddit.com/docs)
-- Subreddit app management deep link for the active subreddit
-
-Install, uninstall, and version-management actions stay on Reddit Developer Platform unless Reddit exposes supported in-app APIs. Any future in-app implementation should be owner-only, confirmation-gated, and audited.
+Because Devvit HTTP domains must be exact hosts, replace or add the real Supabase host in `devvit.json` before upload. The app does not pretend Supabase verification is active when the URL is missing.
 
 ## Sentinel AI
 
-Sentinel uses Groq from the server only when `GROQ_API_KEY` is configured or an owner/admin saves a server-side Groq key in Settings. The model is configurable through `GROQ_MODEL` or the owner/admin settings page and defaults to `llama-3.3-70b-versatile`.
+Sentinel uses Groq chat completions from the server only. The frontend never receives the API key.
 
-There is no offline AI answer path. If Groq is missing, invalid, blocked by Devvit HTTP permissions, rate-limited, or unavailable, Sentinel shows the exact error and recovery step instead of pretending a local model worked. The Devvit app must allow and have Reddit approval for server-side HTTP fetches to `api.groq.com`; after changing `devvit.json`, run `npm run deploy` or `devvit upload` so the permission is registered for the app.
+- URL: `https://api.groq.com/openai/v1/chat/completions`
+- Required Devvit HTTP domain: `api.groq.com`
+- Default model: `llama-3.3-70b-versatile`
 
-## Safety Tests
+If the key is missing, invalid, blocked by Devvit HTTP permissions, rate-limited, or the model fails, Sentinel shows the real error. There is no fake offline AI fallback.
 
-Run:
+If you see `2 UNKNOWN: grpc invocation failed with status 7; HTTP request to domain: api.groq.com is not allowed`, the code path is working but Devvit has blocked the external fetch. Keep `api.groq.com` in `permissions.http.domains`, then run `devvit playtest` or `devvit upload` and check Developer Settings for the app-specific domain approval. Current Devvit rules list approved LLM services separately, so Groq may require Reddit approval before it can be used from a Devvit app.
 
-```bash
-npm run type-check
-npm run lint
-npm test
-npm run build
-```
+## Native Reddit Bridge
 
-The test suite verifies that:
+Reddit pages are opened with Devvit navigation behavior, not `window.location`. If a Reddit page cannot be embedded because of browser, Reddit, CSP, X-Frame-Options, or Devvit iframe limits, ModDesk shows a controlled launcher with:
 
-- Dead tRPC server imports are not mounted.
-- Sentinel has no offline answer path pretending Groq worked.
-- Sentinel uses Groq chat completions and never exposes the API key to the frontend.
-- Live queue writes require mode, permission, and confirmation gates.
-- Demo queue actions branch before Reddit write APIs.
-- Automod and modmail live writes are confirmation-gated.
-- Reddit Developer Platform links are present.
+- Open in Reddit
+- Copy link
+- Return to ModDesk
+
+Bridge targets include native modqueue, modmail, Mod Tools, Automod config, wiki, moderator list, mod log, Reddit Developer Apps, Developer Docs, and Browse Apps.
+
+## Developer Apps
+
+Developer Apps provides official links to:
+
+- [Reddit Developer Apps](https://developers.reddit.com/apps)
+- [Reddit Developer Docs](https://developers.reddit.com/docs)
+- Browse Apps and install/manage pages where Reddit supports them
+
+Install/uninstall is not faked inside ModDesk unless Reddit exposes a supported Devvit API for it.
 
 ## Local Development
 
@@ -122,6 +95,16 @@ Deploy/upload:
 npm run deploy
 ```
 
-## Current Limits
+## Verification Commands
 
-Reddit API support inside Devvit is the source of truth. Unsupported Reddit-native settings open in Reddit's official UI or are shown as read-only. Demo / Training Mode is intentionally isolated from Reddit writes, even when its scenarios come from real Reddit content.
+```bash
+npm run type-check
+npm run lint
+npm test
+npm run build
+```
+
+Use Reddit/Devvit docs as the source of truth for live API availability:
+
+- [Devvit Docs](https://developers.reddit.com/docs)
+- [Devvit Apps](https://developers.reddit.com/apps)

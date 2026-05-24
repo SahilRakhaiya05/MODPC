@@ -97,24 +97,25 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', color: '#e2e8f0', fontFamily: 'var(--font-body)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', color: 'var(--ink)', fontFamily: 'var(--font-body)' }}>
       {/* Segmented Tab Controller */}
       <div 
-        className="glass-panel" 
         style={{ 
-          padding: '6px', 
-          background: 'rgba(0, 0, 0, 0.25)', 
-          border: '1px solid rgba(255, 255, 255, 0.05)',
+          padding: '8px', 
+          background: 'var(--paper-strong)', 
+          border: '3px solid var(--line)',
           borderRadius: '10px',
+          boxShadow: '4px 4px 0 var(--line)',
           display: 'flex',
-          gap: '6px'
+          gap: '8px',
+          flexWrap: 'wrap'
         }}
       >
         {([
-          { id: 'banned', label: '🛡️ BANNED USERS' },
-          { id: 'muted', label: '🔇 MUTED USERS' },
-          { id: 'approved', label: '🟢 APPROVED CONTRIBUTORS' },
-          { id: 'moderators', label: '👑 COMMUNITY MODERATORS' }
+          { id: 'banned', label: '🛡️ Banned Users' },
+          { id: 'muted', label: '🔇 Muted Users' },
+          { id: 'approved', label: '🟢 Approved Contributors' },
+          { id: 'moderators', label: '👑 Community Moderators' }
         ] as const).map(tab => {
           const isSelected = activeTab === tab.id;
           return (
@@ -124,13 +125,16 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
               className="glass-btn"
               style={{
                 flexGrow: 1,
-                padding: '8px',
-                fontSize: '9px',
-                background: isSelected ? 'rgba(217, 119, 6, 0.12)' : 'transparent',
-                borderColor: isSelected ? 'rgba(217, 119, 6, 0.3)' : 'transparent',
-                color: isSelected ? 'var(--accent-gold)' : 'var(--glass-text-muted)',
-                fontWeight: isSelected ? 700 : 500,
-                boxShadow: isSelected ? '0 0 10px rgba(217, 119, 6, 0.15)' : 'none'
+                padding: '10px 14px',
+                fontSize: '11px',
+                background: isSelected ? 'var(--orange)' : 'var(--paper)',
+                border: '2px solid var(--line)',
+                borderRadius: '6px',
+                color: isSelected ? '#ffffff' : 'var(--ink)',
+                fontWeight: isSelected ? 850 : 650,
+                boxShadow: isSelected ? '3px 3px 0 var(--line)' : 'none',
+                transform: isSelected ? 'translate(-1px, -1px)' : 'none',
+                transition: 'all 0.1s ease'
               }}
             >
               {tab.label}
@@ -139,79 +143,79 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
         })}
       </div>
 
-      <div className="registry-grid-layout">
+      <div className="registry-grid-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(280px, 0.8fr)', gap: '22px', flex: 1, minHeight: 0 }}>
         {/* Left Column: Registered Users list */}
         <div 
-          className="glass-panel"
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderColor: 'var(--glass-border)',
+            backgroundColor: 'var(--paper)',
+            border: '3px solid var(--line)',
             borderRadius: '10px',
-            padding: '16px',
+            padding: '18px',
+            boxShadow: '6px 6px 0 var(--line)',
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
+            gap: '12px',
             minHeight: 0
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--glass-text-muted)', letterSpacing: '0.05em' }}>
-              REGISTRY DATABASE RECORDS ({users.length})
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid var(--line)', paddingBottom: '10px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: 'var(--ink)', letterSpacing: '0.05em' }}>
+              📁 REGISTRY DATABASE RECORDS ({users.length})
             </span>
             <button 
               onClick={() => fetchUsers(activeTab)} 
               className="glass-btn" 
-              style={{ fontSize: '9px', padding: '3px 8px' }}
+              style={{ fontSize: '11px', padding: '4px 12px', background: 'var(--paper-strong)' }}
               disabled={loading}
             >
-              Sync Registry
+              🔄 Sync Registry
             </button>
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '40px 0' }}>
-              🔄 INTERROGATING REDDIT CLOUD DIRECTORIES...
+            <div style={{ textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: '12px', padding: '60px 0', fontWeight: 800 }}>
+              ⚡ INTERROGATING REDDIT CLOUD DIRECTORIES...
             </div>
           ) : users.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-heading)', fontSize: '12px', padding: '48px 16px', lineHeight: '1.6' }}>
+            <div style={{ textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-heading)', fontSize: '13px', padding: '60px 20px', lineHeight: '1.6', background: 'rgba(0,0,0,0.02)', borderRadius: '8px', border: '1px dashed var(--line-soft)' }}>
               ℹ️ NO USERS LISTED IN THIS CATEGORY.<br/>
-              <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)', fontWeight: 400 }}>USE THE CONTROL PANEL TO ADD AN ENTRY.</span>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 400 }}>Use the policy control panel on the right to add an entry.</span>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {users.map((u) => (
                 <div 
                   key={u.username}
-                  className="glass-panel"
                   style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                    borderColor: 'rgba(255, 255, 255, 0.04)',
+                    backgroundColor: '#fffdfa',
+                    border: '2px solid var(--line)',
                     borderRadius: '8px',
-                    padding: '10px 14px',
+                    padding: '12px 16px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    gap: '12px'
+                    gap: '12px',
+                    boxShadow: '2px 2px 0 rgba(0,0,0,0.05)'
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff', fontFamily: 'var(--font-heading)' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 850, color: 'var(--ink)', fontFamily: 'var(--font-heading)' }}>
                       u/{u.username}
                     </span>
                     {u.role && (
-                      <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--accent-gold)' }}>
+                      <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--orange-dark)', fontWeight: 800 }}>
                         Relation: {u.role}
                       </span>
                     )}
                     {u.reason && (
-                      <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        Note: {u.reason}
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Note/Reason: {u.reason}
                       </span>
                     )}
                     {u.duration !== undefined && (
-                      <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: '#f87171' }}>
-                        Ban duration: {u.duration === 'Permanent' || u.duration === 0 ? 'PERMANENT' : `${u.duration} DAYS`}
+                      <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 800 }}>
+                        Ban duration: {u.duration === 'Permanent' || u.duration === 0 ? '🚫 PERMANENT' : `⏳ ${u.duration} DAYS`}
                       </span>
                     )}
                   </div>
@@ -220,11 +224,11 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                   {activeUserActionType && (
                     <button
                       className="glass-btn danger"
-                      style={{ fontSize: '9px', padding: '4px 10px', flexShrink: 0 }}
+                      style={{ fontSize: '10px', padding: '6px 12px', flexShrink: 0, boxShadow: '2px 2px 0 var(--line)' }}
                       onClick={() => handleUserAction(activeUserActionType, u.username, 'remove')}
                       disabled={actionLoading}
                     >
-                      {activeTab === 'banned' ? 'UNBAN' : activeTab === 'muted' ? 'UNMUTE' : 'REMOVE APPROVED'}
+                      {activeTab === 'banned' ? '🔓 UNBAN' : activeTab === 'muted' ? '🔊 UNMUTE' : '❌ REMOVE'}
                     </button>
                   )}
                 </div>
@@ -235,44 +239,47 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
 
         {/* Right Column: Execution Control Panel (Forms) */}
         <div 
-          className="glass-panel"
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.25)',
-            borderColor: 'var(--glass-border)',
+            backgroundColor: 'var(--paper-strong)',
+            border: '3px solid var(--line)',
             borderRadius: '10px',
-            padding: '16px',
+            padding: '18px',
+            boxShadow: '6px 6px 0 var(--line)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '14px'
+            gap: '16px'
           }}
         >
-          <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--accent-gold)', letterSpacing: '0.1em' }}>
-            REGISTRY POLICY CONTROL
+          <span style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-heading)', color: 'var(--orange-dark)', letterSpacing: '0.1em' }}>
+            ⚙️ REGISTRY POLICY CONTROL
           </span>
 
           {activeTab === 'moderators' ? (
-            <div style={{ fontSize: '11px', color: 'var(--glass-text-muted)', lineHeight: '1.6' }}>
-              ⚠️ Moderation team membership is controlled directly from your subreddit's settings on Reddit.com. You can view active moderators here, but changes must be made via the official admin portal.
+            <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.6', background: '#fffcf7', border: '2px solid var(--line)', padding: '14px', borderRadius: '8px' }}>
+              <strong>ℹ️ Community Moderators</strong>
+              <p style={{ marginTop: '8px', fontSize: '11px' }}>
+                Subreddit moderation roles are controlled natively by your community configuration on Reddit.com. You can synchronize and view your team here, but changes must be made via the official Reddit mod tools.
+              </p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {/* Username Input */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span className="glass-label">TARGET USERNAME</span>
                 <input
                   type="text"
-                  placeholder="e.g. u/SpamWave"
+                  placeholder="e.g. SpamWave"
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
                   className="glass-input"
-                  style={{ fontSize: '12px', padding: '6px 12px' }}
+                  style={{ fontSize: '13px', padding: '8px 12px', color: 'var(--ink)' }}
                 />
               </div>
 
               {/* Mute/Ban Specific fields */}
               {activeTab === 'banned' && (
                 <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span className="glass-label">BAN DURATION (DAYS, 0 = PERM)</span>
                     <input
                       type="number"
@@ -281,10 +288,10 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                       value={durationInput}
                       onChange={(e) => setDurationInput(parseInt(e.target.value) || 0)}
                       className="glass-input"
-                      style={{ fontSize: '12px', padding: '6px 12px', fontFamily: 'var(--font-mono)' }}
+                      style={{ fontSize: '13px', padding: '8px 12px', fontFamily: 'var(--font-mono)', color: 'var(--ink)' }}
                     />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span className="glass-label">BAN AUDIT REASON</span>
                     <input
                       type="text"
@@ -292,10 +299,23 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                       value={reasonInput}
                       onChange={(e) => setReasonInput(e.target.value)}
                       className="glass-input"
-                      style={{ fontSize: '12px', padding: '6px 12px' }}
+                      style={{ fontSize: '13px', padding: '8px 12px', color: 'var(--ink)' }}
                     />
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      {['Spam / Self-Promo', 'Harassment / Civility', 'Duplicate / Repost', 'Brigading / Trolling', 'Toxicity / Toxicity'].map((reason) => (
+                        <button
+                          key={reason}
+                          type="button"
+                          onClick={() => setReasonInput(reason)}
+                          className="glass-btn"
+                          style={{ fontSize: '9px', padding: '3px 8px', height: 'auto', minHeight: 'auto', background: 'var(--paper)', border: '1px solid var(--line)' }}
+                        >
+                          +{reason}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span className="glass-label">MOD CONSOLE NOTE (INTERNAL)</span>
                     <input
                       type="text"
@@ -303,14 +323,14 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                       value={noteInput}
                       onChange={(e) => setNoteInput(e.target.value)}
                       className="glass-input"
-                      style={{ fontSize: '12px', padding: '6px 12px' }}
+                      style={{ fontSize: '13px', padding: '8px 12px', color: 'var(--ink)' }}
                     />
                   </div>
                 </>
               )}
 
               {activeTab === 'muted' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <span className="glass-label">MUTE AUDIT REASON</span>
                   <input
                     type="text"
@@ -318,39 +338,53 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
                     value={reasonInput}
                     onChange={(e) => setReasonInput(e.target.value)}
                     className="glass-input"
-                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                    style={{ fontSize: '13px', padding: '8px 12px', color: 'var(--ink)' }}
                   />
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                    {['Modmail Abuse', 'Harassment', 'Spamming Team', 'Trolling Modmail'].map((reason) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => setReasonInput(reason)}
+                        className="glass-btn"
+                        style={{ fontSize: '9px', padding: '3px 8px', height: 'auto', minHeight: 'auto', background: 'var(--paper)', border: '1px solid var(--line)' }}
+                      >
+                        +{reason}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, lineHeight: 1.35 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--muted)', fontSize: '11px', fontWeight: 800, lineHeight: 1.4, cursor: 'pointer', userSelect: 'none', background: '#fffcf8', padding: '10px', borderRadius: '6px', border: '1px solid var(--line-soft)' }}>
                 <input
                   type="checkbox"
                   checked={confirmLiveAction}
                   onChange={(event) => setConfirmLiveAction(event.target.checked)}
+                  style={{ cursor: 'pointer' }}
                 />
-                Confirm this change will be applied to the live subreddit user registry.
+                <span>Confirm this change will be applied directly to your live subreddit user registry on Reddit.</span>
               </label>
 
               {/* Action execute button */}
               <button
                 className={`glass-btn ${activeTab === 'banned' ? 'danger' : 'primary'}`}
-                style={{ fontWeight: 600, padding: '10px', marginTop: '6px' }}
+                style={{ fontWeight: 850, padding: '12px', marginTop: '6px', fontSize: '13px', boxShadow: '3px 3px 0 var(--line)' }}
                 onClick={() => activeUserActionType && handleUserAction(activeUserActionType, usernameInput, 'add')}
                 disabled={actionLoading || !usernameInput.trim() || !confirmLiveAction}
               >
                 {actionLoading
-                  ? 'Working...'
+                  ? '⚡ Working...'
                   : activeTab === 'banned'
-                    ? 'Commit banned status'
+                    ? '🚫 Commit banned status'
                     : activeTab === 'muted'
-                      ? 'Mute from contacts'
-                      : 'Deploy approved status'
+                      ? '🔇 Mute from contacts'
+                      : '🟢 Deploy approved status'
                 }
               </button>
 
-              <div style={{ fontSize: '8px', color: '#f87171', fontFamily: 'var(--font-mono)', lineHeight: '1.4', marginTop: '6px' }}>
-                * IMPORTANT: BANS, MUTES AND CONTRIBUTOR ACTIONS TAKE EFFECT DIRECTLY ON THE LIVE SUBREDDIT VIA DEVVIT CLIENT INTERFACES.
+              <div style={{ fontSize: '9px', color: 'var(--red)', fontFamily: 'var(--font-mono)', lineHeight: '1.4', marginTop: '6px', fontWeight: 800 }}>
+                * DIRECT ACTION: ALL MODERATION WRITES IMMEDIATELY MODIFY SUBREDDIT MEMBERSHIP STATE VIA THE NATIVE REDDIT DEVVIT APIS.
               </div>
             </div>
           )}

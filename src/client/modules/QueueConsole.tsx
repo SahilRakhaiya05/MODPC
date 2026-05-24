@@ -7,9 +7,9 @@ import { UserDossier } from '../components/UserDossier';
 
 type QueueConsoleProps = {
   profile: ModeratorProfile;
+  mode: 'demo' | 'live';
   onProfileUpdate: (p: ModeratorProfile) => void;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
-  mode: 'demo' | 'live';
 };
 
 type LiveRule = {
@@ -17,7 +17,8 @@ type LiveRule = {
   shortName: string;
 };
 
-export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUpdate, triggerToast, mode }) => {
+export const QueueConsole: React.FC<QueueConsoleProps> = ({ mode, onProfileUpdate, triggerToast }) => {
+  // Cast widens the literal so the dead-code branches in this file still type-check.
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [escalateNote, setEscalateNote] = useState('');
@@ -79,6 +80,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       const res = await api.queueAction({
         itemId: selectedItem.itemId,
         actionType,
+        mode,
         confirmation: confirmLiveAction,
         ...(actionType === 'escalate' ? { notes: escalateNote } : {})
       });
@@ -88,14 +90,14 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
           triggerToast(
             actionType === 'escalate' 
               ? '🗳️ Live item escalated to Consensus Board!' 
-              : `✅ Live content successfully actioned as [${actionType.toUpperCase()}] on Reddit!`,
+              : `Live content actioned as ${actionType.toUpperCase()} on Reddit.`,
             'success'
           );
         } else {
           triggerToast(
             actionType === 'escalate' 
               ? '🗳️ Item escalated to Consensus Board!' 
-              : `✅ Content successfully marked as [${actionType.toUpperCase()}]`,
+              : `Live content actioned as ${actionType.toUpperCase()} on Reddit.`,
             'success'
           );
         }
@@ -115,14 +117,12 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
     }
   };
 
-  // Filter queue items depending on 'demo' vs 'live' mode
   const filteredQueue = queue.filter(item => {
     const isLiveItem = item.itemId.startsWith('live:');
-    const matchesMode = mode === 'live' ? isLiveItem : !isLiveItem;
     const matchesSeverity = severityFilter === 'all' || item.severity === severityFilter;
     const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
     const matchesAuthor = !authorFilter.trim() || item.author.toLowerCase().includes(authorFilter.trim().toLowerCase());
-    return matchesMode && matchesSeverity && matchesType && matchesAuthor;
+    return isLiveItem && matchesSeverity && matchesType && matchesAuthor;
   }).sort((a, b) => b.severityScore - a.severityScore);
 
   return (
@@ -133,7 +133,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
       >
         <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: '11px', fontWeight: 700, color: 'var(--glass-text-muted)', letterSpacing: '0.05em' }}>
-            {mode === 'live' ? 'LIVE SUBREDDIT FEED' : 'PRIORITY QUEUE'}
+            LIVE SUBREDDIT FEED
           </span>
           <span 
             style={{ 
@@ -274,7 +274,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                   gap: '8px'
                 }}
               >
-                <span>⚠️</span> ACTIVE DEPLOYMENT: ACTIONS AFFECT THE LIVE SUBREDDIT DIRECTLY
+                <span>!</span> LIVE REDDIT MODE: approve/remove actions can affect the subreddit after confirmation.
               </div>
             )}
 
@@ -294,7 +294,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                     border: mode === 'live' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
                   }}
                 >
-                  {mode === 'live' ? 'LIVE SUBREDDIT ITEM' : 'REPORTED QUEUE BLOCK'} #{selectedItem.itemId}
+                  LIVE SUBREDDIT ITEM #{selectedItem.itemId}
                 </span>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, marginTop: '8px', fontFamily: 'var(--font-heading)', color: '#fff' }}>
                   {selectedItem.title || `Contribution post by ${selectedItem.author}`}
@@ -444,7 +444,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                       checked={confirmLiveAction}
                       onChange={(event) => setConfirmLiveAction(event.target.checked)}
                     />
-                    Confirm this approve/remove action will change live Reddit content.
+                    Route: /api/live/queue/action. I understand this approve/remove action can change Reddit.
                   </label>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
@@ -469,7 +469,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                       style={{ minWidth: '140px' }}
                       disabled={selectedItem.itemId.startsWith('live:') && !confirmLiveAction}
                     >
-                      Remove content
+                      Remove from Reddit
                     </button>
                     <button
                       onClick={() => handleAction('approve')}
@@ -477,32 +477,24 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
                       style={{ minWidth: '140px', fontWeight: 600 }}
                       disabled={selectedItem.itemId.startsWith('live:') && !confirmLiveAction}
                     >
-                      Approve content
+                      Approve on Reddit
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Team coverage strip (Only show in Demo Mode) */}
-            {mode === 'demo' ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--glass-text-muted)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
-                <span>Your Review Count: <strong style={{ color: '#fff' }}>{profile.queueReviewed}</strong></span>
-                <span style={{ color: '#10b981', fontWeight: 600 }}>+15 XP per cleared ticket</span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#f87171', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
-                <span>OPERATING MODE: LIVE DEPLOYMENT</span>
-                <span>TRAINING STATS & XP CALCULATIONS ARE PAUSED</span>
-              </div>
-            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#f87171', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '8px', marginTop: '4px' }}>
+              <span>OPERATING MODE: LIVE REDDIT</span>
+              <span>APPROVE/REMOVE REQUIRE CONFIRMATION</span>
+            </div>
 
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '12px' }}>
             <span style={{ fontSize: '42px', filter: 'drop-shadow(0 0 15px var(--accent-border-pill))' }}>🗃️</span>
             <span style={{ fontSize: '13px', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-heading)', textAlign: 'center', lineHeight: '1.5' }}>
-              {mode === 'live' ? 'LIVE DEPLOYMENT WORKSPACE ACTIVE.' : 'PRIORITIZATION GRID COMPLIANT.'}<br/>
+              LIVE REDDIT WORKSPACE ACTIVE.<br/>
               <span style={{ fontSize: '11px' }}>SELECT AN ITEM FROM THE LEFT CONSOLE TO START RESOLVING.</span>
             </span>
           </div>

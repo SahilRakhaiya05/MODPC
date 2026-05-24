@@ -13,13 +13,14 @@ import { ModLogConsole } from '../modules/ModLogConsole';
 import { UserControlRegistry } from '../modules/UserControlRegistry';
 import { SettingsPanel } from '../modules/SettingsPanel';
 import { ConsensusDesk } from '../modules/ConsensusDesk';
-import { ModAcademy } from '../modules/ModAcademy';
 import { NotificationDot } from './NotificationDot';
 import { SentinelChat } from '../modules/SentinelChat';
 import { RiskRadar } from '../modules/RiskRadar';
 import { ActionComposer } from '../modules/ActionComposer';
 import { ShiftHandoff } from '../modules/ShiftHandoff';
 import { DeveloperAppsPanel } from '../modules/DeveloperAppsPanel';
+import { NativeRedditBridge } from '../modules/NativeRedditBridge';
+import { CommentCopPanel } from '../modules/CommentCopPanel';
 
 type WindowId =
   | 'home'
@@ -32,12 +33,13 @@ type WindowId =
   | 'usergrid'
   | 'settings'
   | 'consensus'
-  | 'academy'
   | 'sentinel'
   | 'radar'
   | 'composer'
   | 'handoff'
-  | 'devapps';
+  | 'devapps'
+  | 'bridge'
+  | 'commentcop';
 
 type WindowInfo = {
   isOpen: boolean;
@@ -57,7 +59,7 @@ type DesktopShellProps = {
   onReset: () => void;
 };
 
-type ModuleId = Exclude<WindowId, 'home' | 'consensus' | 'academy'>;
+type ModuleId = Exclude<WindowId, 'home' | 'consensus'>;
 
 type IconPosition = {
   x: number;
@@ -127,12 +129,13 @@ const initialWindows: Record<WindowId, WindowInfo> = {
   usergrid: makeWindow('Users DB', 'DB', '900px', '620px', 118, 90),
   settings: makeWindow('Settings System', 'SYS', '780px', '640px', 180, 82),
   consensus: makeWindow('Consensus Desk', 'VOTE', '800px', '580px', 118, 96),
-  academy: makeWindow('Mod Academy', 'EDU', '780px', '560px', 84, 82),
   sentinel: makeWindow('Sentinel AI Chat', 'AI', '1050px', '700px', 126, 76),
   radar: makeWindow('Risk Radar', 'RADAR', '980px', '650px', 98, 84),
   composer: makeWindow('Action Composer', 'DRAFT', '1000px', '660px', 116, 92),
   handoff: makeWindow('Shift Handoff', 'SHIFT', '980px', '640px', 136, 112),
   devapps: makeWindow('Reddit Developer Apps', 'APP', '860px', '600px', 152, 104),
+  bridge: makeWindow('Native Reddit Bridge', 'NAV', '900px', '640px', 144, 96),
+  commentcop: makeWindow('CommentCop Shield', 'COP', '940px', '640px', 118, 76),
 };
 
 const modules: ProductModule[] = [
@@ -210,7 +213,7 @@ const modules: ProductModule[] = [
     id: 'settings',
     file: 'settings.sys',
     label: 'Settings',
-    description: 'Subreddit-scoped configuration, mode, training, and reset controls.',
+    description: 'Subreddit-scoped configuration, identity, and reset controls.',
     icon: '/moddesk-icons/settings.png',
     tint: '#e2dccf',
     category: 'Settings',
@@ -225,6 +228,16 @@ const modules: ProductModule[] = [
     tint: '#dff3ff',
     category: 'Support',
     aliases: ['ai', 'chat', 'rag', 'sentinel', 'copilot', 'assistant'],
+  },
+  {
+    id: 'commentcop',
+    file: 'commentcop.app',
+    label: 'CommentCop',
+    description: 'Anti-bot similarity shield for copied comments, trigger dedupe, and vector verification.',
+    icon: '/moddesk-icons/commentcop.svg',
+    tint: '#e5f4ff',
+    category: 'Moderation',
+    aliases: ['commentcop', 'bot', 'similarity', 'duplicate comments', 'anti spam'],
   },
   {
     id: 'radar',
@@ -251,7 +264,7 @@ const modules: ProductModule[] = [
     file: 'reddit-apps.app',
     label: 'Developer Apps',
     description: 'Official Reddit Developer Platform links and install-management boundaries.',
-    icon: '/moddesk-icons/settings.png',
+    icon: '/moddesk-icons/devapps.svg',
     tint: '#e4f7f1',
     category: 'Community Apps',
     aliases: ['apps', 'developer', 'installed apps', 'browse apps', 'reddit apps'],
@@ -266,12 +279,23 @@ const modules: ProductModule[] = [
     category: 'Overview',
     aliases: ['handoff', 'shift', 'notes', 'coverage', 'team'],
   },
+  {
+    id: 'bridge',
+    file: 'reddit-bridge.app',
+    label: 'Native Reddit Bridge',
+    description: 'Deep-link to real Reddit mod surfaces (modqueue, modmail, wiki, mod log) that can\'t embed inside Devvit.',
+    icon: '/moddesk-icons/bridge.svg',
+    tint: '#fff3df',
+    category: 'Community Apps',
+    aliases: ['bridge', 'native', 'open reddit', 'deep link', 'navigate'],
+  },
 ];
 
 const mainTabs: Array<{ id: WindowId; label: string }> = [
   { id: 'queue', label: 'Needs Review' },
   { id: 'modmail', label: 'Mod Mail' },
   { id: 'automod', label: 'Automod' },
+  { id: 'commentcop', label: 'CommentCop' },
   { id: 'insights', label: 'Insights' },
   { id: 'typewriter', label: 'Saved Responses' },
   { id: 'radar', label: 'Crisis Radar' },
@@ -290,12 +314,13 @@ const windowIds: Exclude<WindowId, 'home'>[] = [
   'usergrid',
   'settings',
   'consensus',
-  'academy',
   'sentinel',
   'radar',
   'composer',
   'handoff',
   'devapps',
+  'bridge',
+  'commentcop',
 ];
 
 const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; label: string; hint: string }> }> = [
@@ -307,10 +332,10 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
       { id: 'modlog', label: 'Mod Log', hint: 'Reddit native log plus ModDesk audit' },
       { id: 'automod', label: 'Automod', hint: 'Automod wiki sandbox and live publishing gates' },
+      { id: 'commentcop', label: 'CommentCop', hint: 'Anti-bot copied-comment shield' },
       { id: 'consensus', label: 'Consensus', hint: 'Evidence-backed high-impact decisions' },
       { id: 'handoff', label: 'Handoff', hint: 'Pass context to the next moderator' },
       { id: 'usergrid', label: 'User Registry', hint: 'Banned, muted, approved, moderators' },
-      { id: 'academy', label: 'Mod Academy', hint: 'Demo / Training Mode scenarios' },
     ],
   },
   {
@@ -322,6 +347,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'modlog', label: 'Modlog', hint: 'Reddit modlog plus audit trail' },
       { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
       { id: 'devapps', label: 'Developer Apps', hint: 'Reddit Developer Platform links' },
+      { id: 'bridge', label: 'Native Reddit Bridge', hint: 'Deep-link to Reddit mod surfaces' },
     ],
   },
   {
@@ -346,7 +372,6 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'settings', label: 'Install Status', hint: 'Community picker and capabilities' },
       { id: 'devapps', label: 'Reddit Apps', hint: 'Installed apps, Browse Apps, Developer Apps links' },
       { id: 'settings', label: 'Groq Setup', hint: 'Model status and connection errors' },
-      { id: 'academy', label: 'Demo Mode', hint: 'Training and Mod Academy scenarios' },
       { id: 'audits', label: 'Audit Log', hint: 'Review guarded actions and outcomes' },
     ],
   },
@@ -358,10 +383,10 @@ const commandItems: Array<{ label: string; target: WindowId | 'audits'; hint: st
   { label: 'Open modmail', target: 'modmail', hint: 'Reply, note, archive, draft' },
   { label: 'Draft modmail reply', target: 'sentinel', hint: 'Start from Sentinel draft prompt' },
   { label: 'Open Automod Studio', target: 'automod', hint: 'Validate and diff Automod changes' },
+  { label: 'Open CommentCop', target: 'commentcop', hint: 'Configure copied-comment bot protection' },
   { label: 'Generate Automod snippet', target: 'composer', hint: 'Use Composer/Sentinel as a draft desk' },
   { label: 'Check Groq status', target: 'sentinel', hint: 'Open Model Status tab' },
   { label: 'Switch community', target: 'settings', hint: 'Open community picker' },
-  { label: 'Start demo mode', target: 'settings', hint: 'Toggle training mode safely' },
   { label: 'Escalate to consensus', target: 'consensus', hint: 'Create evidence-backed case' },
   { label: 'Open user registry', target: 'usergrid', hint: 'Review user lists and guarded actions' },
   { label: 'Open capability matrix', target: 'settings', hint: 'See what is available now' },
@@ -383,6 +408,8 @@ const defaultIconPositions: Record<ModuleId, IconPosition> = {
   settings: { x: 118, y: 404 },
   composer: { x: 118, y: 514 },
   devapps: { x: 118, y: 624 },
+  bridge: { x: 118, y: 734 },
+  commentcop: { x: 222, y: 74 },
 };
 
 const iconStorageKey = 'moddesk-os:desktop-icons:v1';
@@ -427,8 +454,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
   const [auditTicker, setAuditTicker] = useState<AuditEvent[]>(statusData.recentAudits ?? []);
   const [homeStats, setHomeStats] = useState<HomeStats>(() => fallbackStats(statusData.recentAudits?.length ?? 0));
-  // Workspace mode is driven by persisted settings now — toggled from SettingsPanel only.
-  const mode: 'demo' | 'live' = settings.workspaceMode === 'training' ? 'demo' : 'live';
+  const workspaceMode = 'live' as const;
   const [windows, setWindows] = useState<Record<WindowId, WindowInfo>>({
     ...initialWindows,
     home: { ...initialWindows.home, isOpen: true },
@@ -445,6 +471,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [liveRules, setLiveRules] = useState<Array<{ shortName: string; description?: string; priority?: number }>>([]);
   const [liveModlog, setLiveModlog] = useState<Array<{ id: string; type: string; moderatorName?: string; details?: string; description?: string; createdAt: string; target?: { author?: string; title?: string } }>>([]);
   const [liveEvents, setLiveEvents] = useState<Array<{ id: string; kind: string; createdAt: string; actor?: string | null; summary: string }>>([]);
+  const liveWritesLocked = !settings.liveWritesEnabled;
 
   useEffect(() => {
     const themeAttr = settings.themeMode === 'high-contrast' ? 'dark' : 'posthog';
@@ -530,11 +557,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       ]);
 
       const queue = queueResult.status === 'fulfilled' ? queueResult.value.queue : [];
-      // Live mode: only items that came from the Reddit API (their itemId is namespaced 'live:').
-      const queueForMode = mode === 'live'
-        ? queue.filter((item) => typeof item.itemId === 'string' && item.itemId.startsWith('live:'))
-        : queue.filter((item) => typeof item.itemId !== 'string' || !item.itemId.startsWith('live:'));
-      const activeQueue = queueForMode.filter((item) => item.status === 'new' || item.status === 'reviewing');
+      const activeQueue = queue
+        .filter((item) => typeof item.itemId === 'string' && item.itemId.startsWith('live:'))
+        .filter((item) => item.status === 'new' || item.status === 'reviewing');
       const latestQueue = activeQueue.slice(0, 4);
       const modmailOpen = modmailResult.status === 'fulfilled'
         ? modmailResult.value.conversations.filter((thread) => thread.folder !== 'archived').length
@@ -558,7 +583,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     void loadHomeStats();
     const interval = window.setInterval(() => void loadHomeStats(), 15000);
     return () => window.clearInterval(interval);
-  }, [auditTicker.length, mode]);
+  }, [auditTicker.length]);
 
   useEffect(() => {
     const fetchAudits = async () => {
@@ -666,9 +691,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   };
 
   const renderModule = (target: WindowId) => {
-    if (target === 'queue') return <QueueConsole profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} mode={mode} />;
-    if (target === 'modmail') return <ModmailHub triggerToast={triggerToast} />;
-    if (target === 'automod') return <AutomodPanel mode={mode} triggerToast={triggerToast} />;
+    if (target === 'queue') return <QueueConsole mode={workspaceMode} profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
+    if (target === 'modmail') return <ModmailHub mode={workspaceMode} triggerToast={triggerToast} />;
+    if (target === 'automod') return <AutomodPanel mode={workspaceMode} triggerToast={triggerToast} />;
     if (target === 'insights') return <InsightsPanel triggerToast={triggerToast} />;
     if (target === 'typewriter') return <Typewriter triggerToast={triggerToast} />;
     if (target === 'modlog') return <ModLogConsole triggerToast={triggerToast} />;
@@ -688,11 +713,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
     }
     if (target === 'consensus') return <ConsensusDesk profile={profile} triggerToast={triggerToast} />;
     if (target === 'sentinel') return <SentinelChat triggerToast={triggerToast} />;
-    if (target === 'radar') return <RiskRadar mode={mode} triggerToast={triggerToast} />;
+    if (target === 'radar') return <RiskRadar triggerToast={triggerToast} />;
     if (target === 'composer') {
       return (
         <ActionComposer
-          mode={mode}
           triggerToast={triggerToast}
           openConsensus={() => openWindow('consensus')}
           openSentinel={() => openWindow('sentinel')}
@@ -700,8 +724,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       );
     }
     if (target === 'handoff') return <ShiftHandoff triggerToast={triggerToast} openSentinel={() => openWindow('sentinel')} />;
-    if (target === 'devapps') return <DeveloperAppsPanel session={session} />;
-    return <ModAcademy mode={mode} profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
+    if (target === 'devapps') return <DeveloperAppsPanel session={session} onLaunch={(t) => openWindow(t as WindowId)} />;
+    if (target === 'bridge') return <NativeRedditBridge session={session} />;
+    if (target === 'commentcop') return <CommentCopPanel triggerToast={triggerToast} />;
+    return <CommentCopPanel triggerToast={triggerToast} />;
   };
 
   return (
@@ -720,7 +746,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           </button>
           <div className="ph-product-title">
             <strong>ModDesk OS</strong>
-            <span>{mode === 'live' ? 'Live moderator workspace' : 'Training workspace'}</span>
+            <span>Live Reddit console</span>
           </div>
           <nav className="ph-top-launcher" aria-label="Quick launch">
             {navMenus.map((menu) => (
@@ -750,24 +776,16 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           <button type="button" className="ph-command-btn" onClick={() => setCommandOpen(true)} aria-label="Open command launcher">
             Search
           </button>
-          {mode === 'demo' && (
-            <span
-              className="ph-mode-pill training"
-              title="Workspace is in training mode — toggle from Settings to use live Reddit data."
-            >
-              Training
-            </span>
-          )}
           <span className="ph-clock">{dateLabel}</span>
           <button
             type="button"
             className="ph-xp-pill"
-            onClick={() => openWindow('academy')}
-            title={`u/${cleanUsername} · Lvl ${profile.trainingLevel} · ${profile.xp} XP · ${profile.correctScenarios}/${profile.totalScenarios} scenarios`}
-            aria-label="Open Mod Academy"
+            onClick={() => openWindow('modlog')}
+            title={`u/${cleanUsername} · ${profile.queueReviewed} reviewed · ${profile.consensusVotesCast} consensus votes`}
+            aria-label="Open live audit log"
           >
-            <span className="ph-xp-level">L{profile.trainingLevel}</span>
-            <span className="ph-xp-value">{profile.xp} XP</span>
+            <span className="ph-xp-level">LIVE</span>
+            <span className="ph-xp-value">Audit</span>
           </button>
           <button className="ph-top-cta" onClick={() => openWindow('queue')}>
             <span>Needs Review</span>
@@ -808,11 +826,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
               autoFocus
               value={commandQuery}
               onChange={(event) => setCommandQuery(event.target.value)}
-              placeholder="Search commands: Sentinel, queue, modmail, Automod, demo..."
+              placeholder="Search commands: Sentinel, queue, modmail, Automod, CommentCop..."
             />
             <div>
               {filteredCommands.length === 0 ? (
-                <p>No matching command. Try "queue", "Groq", or "demo".</p>
+                <p>No matching command. Try "queue", "Groq", "CommentCop", or "modmail".</p>
               ) : (
                 filteredCommands.slice(0, 9).map((item) => (
                   <button key={item.label} type="button" onClick={() => runLauncherTarget(item.target)}>
@@ -822,7 +840,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 ))
               )}
             </div>
-            <footer>Cmd/Ctrl + K opens this launcher. Demo mode never performs Reddit writes.</footer>
+            <footer>Cmd/Ctrl + K opens this launcher. Destructive Reddit actions still require explicit confirmation.</footer>
           </section>
         </div>
       )}
@@ -914,7 +932,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
               <div className="moddesk-session-card">
                 <span>Active session</span>
                 <strong>u/{cleanUsername}</strong>
-                <em>{mode === 'live' ? 'Guarded live mode' : 'Local demo mode'}</em>
+                <em>{liveWritesLocked ? 'Live writes locked' : 'Guarded live workspace'}</em>
               </div>
             </div>
 
@@ -949,7 +967,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
                 <div className="moddesk-queue-mini">
                   {homeStats.latestQueue.length === 0 ? (
-                    <p className="moddesk-empty">No items need review right now. You can switch communities, open demo mode, or check modmail for {subredditLabel}.</p>
+                    <p className="moddesk-empty">No items need review right now. Switch subreddits from the identity chip or open Mod Mail for {subredditLabel}.</p>
                   ) : (
                     homeStats.latestQueue.map((item) => (
                       <button key={item.itemId} onClick={() => openWindow('queue')}>
@@ -1016,7 +1034,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
                 <ol className="moddesk-rules-list">
                   {liveRules.length === 0 ? (
-                    <li className="moddesk-empty">No rules returned by Reddit. Define them in subreddit settings or open demo mode to practice the workflow.</li>
+                    <li className="moddesk-empty">No rules returned by Reddit. Define them in native subreddit settings or open the Rules and Saved Responses tools.</li>
                   ) : (
                     liveRules.map((rule, index) => (
                       <li key={`rule-${index}`}>

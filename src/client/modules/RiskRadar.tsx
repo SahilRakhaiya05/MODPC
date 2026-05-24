@@ -3,7 +3,6 @@ import type { CrisisRadarResponse } from '../../shared/api';
 import { api } from '../utils/api';
 
 type RiskRadarProps = {
-  mode: 'demo' | 'live';
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
 };
 
@@ -14,7 +13,7 @@ const formatAge = (seconds: number) => {
   return `${Math.floor(minutes / 60)}h`;
 };
 
-export const RiskRadar: React.FC<RiskRadarProps> = ({ mode, triggerToast }) => {
+export const RiskRadar: React.FC<RiskRadarProps> = ({ triggerToast }) => {
   const [data, setData] = useState<CrisisRadarResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +47,7 @@ export const RiskRadar: React.FC<RiskRadarProps> = ({ mode, triggerToast }) => {
         <div className={`risk-meter ${pressure >= 75 ? 'hot' : pressure >= 42 ? 'warm' : 'calm'}`}>
           <span>Pressure</span>
           <strong>{loading ? '...' : pressure}</strong>
-          <em>{mode === 'live' ? 'live-only' : 'training demo'}</em>
+          <em>live-only</em>
         </div>
       </header>
 
@@ -59,9 +58,7 @@ export const RiskRadar: React.FC<RiskRadarProps> = ({ mode, triggerToast }) => {
           </div>
           {!data || data.cases.length === 0 ? (
             <p className="moddesk-empty">
-              {mode === 'live'
-                ? 'No live reports are currently returned by Reddit for this install.'
-                : 'Training mode has no seeded queue cases ready for radar review.'}
+              No live reports are currently returned by Reddit for this install.
             </p>
           ) : (
             <div className="risk-case-list">
