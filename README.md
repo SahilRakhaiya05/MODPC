@@ -1,69 +1,115 @@
 # ModDesk OS
 
-**A retro command center for modern subreddit governance.**
+ModDesk OS is a private Reddit Devvit Web workspace for volunteer subreddit moderator teams. It brings queue triage, training, consensus governance, Automod editing, modmail handling, saved responses, user lists, audit logs, and Reddit Developer Platform links into one moderator-only operations surface.
 
-ModDesk OS is a private moderator-only Reddit Devvit Web app. It wraps real moderation utility in a polished 1990s desktop shell: boot screen, desktop icons, beveled windows, taskbar, status tray, audit ticker, and compact modules for training, consensus decisions, response templates, queue triage, and community settings.
+The app is built for subreddit owners/top mods, senior moderators, active queue moderators, trainees, and read-only observers. Normal Reddit users must not see moderator queues, modmail, user registries, audit logs, or live-case training content.
 
-## What Is Included
+## Modes
 
-- **Retro OS shell:** expanded Devvit Web workspace, splash launcher, boot animation, taskbar, windows, desktop icons, system toasts, and high-risk confirmation dialog.
-- **ModAcademy Simulator:** seeded training scenarios, action/rule decisions, confidence slider, XP scoring, ranks, streaks, missed concepts, and Redis-persisted profile progress.
-- **Consensus Voting Desk:** ticket creation, evidence notes, one vote per moderator per ticket, vote updates before closure, threshold progress, approved/rejected/expired states, and MVP-safe manual execution marking.
-- **Typewriter Canned Response Editor:** mobile-safe markdown toolbar, macro buttons, template list, rendered preview, save/version/archive flow, and Redis persistence.
-- **Live Queue Console:** seeded queue packets, severity scoring, sorted review list, simulated approve/remove/review actions, escalation to consensus, and safe productivity stats.
-- **Control Panel:** threshold mode, high-impact actions, required training level, theme mode, mobile compact flag, template approval flag, anonymous vote flag, and demo reset.
-- **Audit Log:** important training, vote, ticket, template, queue, settings, and reset actions create audit events.
+**Demo / Training Mode** is the default. It may preview real Reddit-derived content when an authenticated moderator has read access, but every action is simulated. Demo writes are stored under the demo namespace and never call Reddit write APIs. Buttons and audit entries label these actions as simulated.
 
-## Devvit Web Architecture
+**Live Reddit Mode** loads real Reddit moderation data and can perform Reddit writes only when all safety gates pass: authenticated Reddit user, subreddit moderator status, matching Reddit moderator permission, ModDesk role permission, owner/admin live-write enablement, and server-side `CONFIRM_LIVE_ACTION`.
 
-The app follows the current Devvit Web split:
+## Owner Setup
 
-- Client code lives in `src/client`.
-- Server endpoints live under `/api/` in `src/server/routes/api.ts`.
-- Shared contracts live in `src/shared/api.ts`.
-- Moderator menu entry is configured in `devvit.json`.
-- Redis is the only durable MVP data store.
+1. Install ModDesk OS in a subreddit from Reddit Developer Platform.
+2. Open ModDesk OS from the subreddit moderator menu.
+3. Confirm the detected subreddit and Reddit identity.
+4. Keep Demo / Training Mode enabled while onboarding.
+5. Configure consensus thresholds, training requirements, audit retention, and live-write enablement.
+6. Invite or approve moderators and trainees according to subreddit policy.
 
-No external database, webhook, LLM, or client-side third-party HTTP dependency is required.
+Live writes are locked by default. Enabling them is audited with actor, role, subreddit, mode, timestamp, and before/after settings.
 
-## Data Stored In Redis
+## Access Model
 
-All keys are namespaced under `moddesk-os:v1`. The app stores:
+ModDesk derives a safe default role from Reddit moderator context:
 
-- App settings
-- Moderator profiles
-- Training scenarios and attempts
-- Consensus tickets and vote hashes
-- Response templates
-- Demo queue packets
-- Audit events
+- **Owner**: top mod or moderator with `all` permission; can configure workspace settings and enable live writes.
+- **Admin**: senior moderator with elevated permissions such as config, wiki, mail, access, or posts.
+- **Moderator**: can read workspace tools and perform allowed live actions when granted and confirmed.
+- **Trainee**: intended for Demo / Training Mode and shadow workflows.
+- **Observer**: read-only posture.
 
-The app avoids key scanning by maintaining explicit index lists for each entity group.
+Every backend route checks Reddit authentication and moderator status. Destructive routes additionally check workspace mode, ModDesk role, Reddit moderator permission, live-write enablement, and confirmation.
 
-## Permissions And Privacy
+## Reddit Authentication
 
-ModDesk OS is intended to be opened from the subreddit moderator menu. The menu item is configured with `forUserType: "moderator"`, and API endpoints verify moderator context where possible by comparing the current user to the subreddit moderator listing.
+The server uses Devvit Web server context:
 
-If moderator verification fails, the client degrades to an access-check failure instead of rendering operational data.
+- `reddit.getCurrentUsername()`
+- `context.subredditName`
+- `reddit.getModerators()`
+- subreddit, modqueue, rules, modlog, wiki, user-list, and modmail APIs where supported
 
-This MVP does **not** automatically execute live permanent bans, mutes, removals, or locks. Approved consensus tickets require a manual execution confirmation record.
+If Reddit identity or moderator checks fail, the app defaults to access denied or read-only behavior. It does not allow live writes when auth state is unknown.
+
+## Supported Actions
+
+Implemented or wired through Devvit Reddit APIs where available:
+
+- Fetch reports and modqueue-style queue items.
+- Approve or remove posts/comments.
+- Fetch subreddit rules.
+- Fetch and update `config/automod` wiki with validation, confirmation, and audit gates.
+- Fetch native moderation log.
+- Fetch banned, muted, approved, and moderator lists.
+- Ban/unban, mute/unmute, approve/unapprove users.
+- Fetch modmail conversations.
+- Reply to modmail, add internal notes, archive/unarchive conversations.
+- Fetch post and user flair templates.
+
+## Simulated Or Read-Only Areas
+
+Some Reddit settings are not safely exposed as in-app Devvit management APIs. ModDesk does not fake unsupported install/delete/settings behavior. These areas are labeled read-only, simulated, or "Managed on Reddit Developer Platform" and deep-link to official Reddit pages when appropriate.
+
+Flair template editing is currently stored locally and labeled as ModDesk-managed/simulated unless an official write API is added and audited.
+
+## Reddit Developer Apps
+
+The **Developer Apps** module includes official links:
+
+- [Reddit Developer Apps](https://developers.reddit.com/apps)
+- [Reddit Developer Docs](https://developers.reddit.com/docs)
+- Subreddit app management deep link for the active subreddit
+
+Install, uninstall, and version-management actions stay on Reddit Developer Platform unless Reddit exposes supported in-app APIs. Any future in-app implementation should be owner-only, confirmation-gated, and audited.
+
+## Sentinel AI
+
+Sentinel uses Groq from the server only when `GROQ_API_KEY` is configured or an owner/admin saves a server-side Groq key in Settings. The model is configurable through `GROQ_MODEL` or the owner/admin settings page and defaults to `llama-3.3-70b-versatile`.
+
+There is no offline AI answer path. If Groq is missing, invalid, blocked by Devvit HTTP permissions, rate-limited, or unavailable, Sentinel shows the exact error and recovery step instead of pretending a local model worked. The Devvit app must allow and have Reddit approval for server-side HTTP fetches to `api.groq.com`; after changing `devvit.json`, run `npm run deploy` or `devvit upload` so the permission is registered for the app.
+
+## Safety Tests
+
+Run:
+
+```bash
+npm run type-check
+npm run lint
+npm test
+npm run build
+```
+
+The test suite verifies that:
+
+- Dead tRPC server imports are not mounted.
+- Sentinel has no offline answer path pretending Groq worked.
+- Sentinel uses Groq chat completions and never exposes the API key to the frontend.
+- Live queue writes require mode, permission, and confirmation gates.
+- Demo queue actions branch before Reddit write APIs.
+- Automod and modmail live writes are confirmation-gated.
+- Reddit Developer Platform links are present.
 
 ## Local Development
 
 ```bash
 npm install
-npm run type-check
-npm run lint
-npm run build
-```
-
-Local UI-only preview with seeded development data:
-
-```bash
 npm run preview:ui -- --port 5173
 ```
 
-For a Devvit playtest:
+For Devvit playtest:
 
 ```bash
 npm run login
@@ -76,30 +122,6 @@ Deploy/upload:
 npm run deploy
 ```
 
-Publish after review:
+## Current Limits
 
-```bash
-npm run launch
-```
-
-## Moderator Setup Guide
-
-1. Install the app in a test subreddit.
-2. Open the subreddit moderator menu and choose **Open ModDesk OS**.
-3. Use **Control Panel** to set consensus mode, high-impact action gates, training level, and theme.
-4. Use **Reset Demo Data** while testing to reseed training scenarios, templates, queue items, and sample tickets.
-5. Use **Consensus Voting Desk** for high-impact actions. Treat approved tickets as a team decision record, then manually perform any live Reddit action outside the MVP.
-
-## Known Limitations
-
-- Queue items are seeded demo packets for MVP reliability.
-- Consensus approvals are recorded but not automatically dispatched to live Reddit enforcement endpoints.
-- Template editing is stored locally in Redis and is not yet synced to subreddit removal reasons.
-- Moderator role granularity is not implemented beyond moderator-only access.
-- Real-time collaboration is represented through refresh-after-action, not websockets or streaming.
-
-## Safety Notes
-
-Gamification rewards training accuracy, reviewed work, appropriate escalation, and consistency. It does not award extra points for removals, bans, or punitive action volume.
-
-Dangerous actions are blocked behind consensus and explicit manual confirmation language. The README and UI intentionally avoid claiming unsupported live enforcement.
+Reddit API support inside Devvit is the source of truth. Unsupported Reddit-native settings open in Reddit's official UI or are shown as read-only. Demo / Training Mode is intentionally isolated from Reddit writes, even when its scenarios come from real Reddit content.

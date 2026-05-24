@@ -3,7 +3,6 @@ import {
   SystemStatus, AppSettings, ModeratorProfile, TrainingScenario, 
   TrainingAttempt, ConsensusTicket, ResponseTemplate, QueueItem, AuditEvent 
 } from '../types';
-import { trpc } from '../lib/trpc';
 import type {
   AiChatRequest,
   AiChatResponse,
@@ -14,10 +13,13 @@ import type {
   DashboardResponse,
   HandoffResponse,
   LiveInsightResponse,
+  SentinelSettingsResponse,
   SessionResponse,
   SubmitAttemptResponse,
   SubredditInstall,
-  TicketDetailResponse
+  TestGroqResponse,
+  TicketDetailResponse,
+  UpdateSentinelSettingsRequest
 } from '../../shared/api';
 
 export type LiveModmailThread = {
@@ -83,6 +85,16 @@ export const api = {
       templateApprovalRequired: data.settings.templateApprovalRequired,
       scenarioDifficultyMix: data.settings.scenarioDifficultyMix,
       workspaceMode: data.settings.workspaceMode,
+      liveWritesEnabled: data.settings.liveWritesEnabled,
+      liveModeEnabledBy: data.settings.liveModeEnabledBy,
+      liveModeEnabledAt: data.settings.liveModeEnabledAt,
+      auditRetentionDays: data.settings.auditRetentionDays,
+      sentinelModel: data.settings.sentinelModel,
+      sentinelTemperature: data.settings.sentinelTemperature,
+      sentinelMaxTokens: data.settings.sentinelMaxTokens,
+      sentinelRagEnabled: data.settings.sentinelRagEnabled,
+      sentinelAllowedTools: data.settings.sentinelAllowedTools,
+      sentinelAutomationEnabled: data.settings.sentinelAutomationEnabled,
     };
 
     const moderatorProfile: ModeratorProfile = {
@@ -158,31 +170,66 @@ export const api = {
       templateApprovalRequired: updated.templateApprovalRequired,
       scenarioDifficultyMix: updated.scenarioDifficultyMix,
       workspaceMode: updated.workspaceMode,
+      liveWritesEnabled: updated.liveWritesEnabled,
+      liveModeEnabledBy: updated.liveModeEnabledBy,
+      liveModeEnabledAt: updated.liveModeEnabledAt,
+      auditRetentionDays: updated.auditRetentionDays,
+      sentinelModel: updated.sentinelModel,
+      sentinelTemperature: updated.sentinelTemperature,
+      sentinelMaxTokens: updated.sentinelMaxTokens,
+      sentinelRagEnabled: updated.sentinelRagEnabled,
+      sentinelAllowedTools: updated.sentinelAllowedTools,
+      sentinelAutomationEnabled: updated.sentinelAutomationEnabled,
     };
 
     return { success: true, settings: mappedSettings };
   },
 
   async getNextScenario(): Promise<{ scenario: TrainingScenario | null }> {
-    const data = await apiFetch<DashboardResponse>('/dashboard');
+    let data: DashboardResponse;
+    try {
+      data = await apiFetch<DashboardResponse>('/dashboard');
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      return {
+        scenario: {
+          scenarioId: 'preview-safety',
+          sourceType: 'comment',
+          title: 'Possible self-harm report in an escalating comment chain',
+          bodyExcerpt: 'A user says they may not be safe tonight while other commenters argue below them. Treat this as a safety workflow, not a punitive queue clear.',
+          authorNameHash: 'u/redacted-preview-7f2',
+          reportReasons: ['Self-harm', 'Urgent safety', 'Escalation needed'],
+          expectedAction: 'escalate',
+          expectedRuleId: 'rule-5',
+          difficulty: 'hard',
+          explanation: 'Self-harm cases should be escalated to peers and handled through the community safety protocol.',
+          tags: ['safety', 'urgent', 'training'],
+          source: 'mock',
+          status: 'active',
+        },
+      };
+    }
     // Scenarios are already in dashboard. We can find one not attempted, or just return the first active one.
     // In Devvit backend, they are active scenarios. Let's find the first one.
     const scenario = data.scenarios[0] || null;
+    const mappedScenario = scenario ? {
+      scenarioId: scenario.scenarioId,
+      sourceType: scenario.sourceType === 'modmail' ? 'comment' : scenario.sourceType,
+      title: scenario.title,
+      bodyExcerpt: scenario.bodyExcerpt,
+      authorNameHash: scenario.authorNameHash,
+      reportReasons: scenario.reportReasons,
+      expectedAction: scenario.expectedAction as any,
+      expectedRuleId: scenario.expectedRuleId,
+      difficulty: scenario.difficulty,
+      explanation: scenario.explanation,
+      tags: scenario.tags,
+      source: scenario.source,
+      status: scenario.status,
+      ...(scenario.sourceRef ? { sourceRef: scenario.sourceRef } : {}),
+    } : null;
     return { 
-      scenario: scenario ? {
-        scenarioId: scenario.scenarioId,
-        sourceType: scenario.sourceType === 'modmail' ? 'comment' : scenario.sourceType, // safe map
-        title: scenario.title,
-        bodyExcerpt: scenario.bodyExcerpt,
-        authorNameHash: scenario.authorNameHash,
-        reportReasons: scenario.reportReasons,
-        expectedAction: scenario.expectedAction as any,
-        expectedRuleId: scenario.expectedRuleId,
-        difficulty: scenario.difficulty,
-        explanation: scenario.explanation,
-        tags: scenario.tags,
-        status: scenario.status,
-      } : null 
+      scenario: mappedScenario
     };
   },
 
@@ -538,10 +585,10 @@ export const api = {
     return await apiFetch<{ content: string }>('/wiki/automod');
   },
 
-  async saveAutomod(content: string, reason: string): Promise<{ success: boolean }> {
+  async saveAutomod(content: string, reason: string, confirmation?: boolean): Promise<{ success: boolean }> {
     return await apiFetch<{ success: boolean }>('/wiki/automod', {
       method: 'POST',
-      body: JSON.stringify({ content, reason }),
+      body: JSON.stringify({ content, reason, confirmation: confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
   },
 
@@ -576,17 +623,17 @@ export const api = {
     return await apiFetch<{ conversations: LiveModmailThread[] }>('/live/modmail');
   },
 
-  async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean }): Promise<{ success: boolean; thread?: any }> {
+  async replyModmail(payload: { threadId: string; body: string; isInternal?: boolean; confirmation?: boolean }): Promise<{ success: boolean; thread?: any }> {
     return await apiFetch<{ success: boolean; thread?: any }>('/live/modmail/reply', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
   },
 
-  async actionModmail(payload: { threadId: string; action: 'archive' | 'unarchive' | 'highlight' | 'delete' }): Promise<{ success: boolean }> {
+  async actionModmail(payload: { threadId: string; action: 'archive' | 'unarchive' | 'highlight' | 'delete'; confirmation?: boolean }): Promise<{ success: boolean }> {
     return await apiFetch<{ success: boolean }>('/live/modmail/action', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, confirmation: payload.confirmation ? 'CONFIRM_LIVE_ACTION' : undefined }),
     });
   },
 
@@ -725,50 +772,39 @@ export const api = {
 
   async askAi(payload: AiChatRequest): Promise<AiChatResponse> {
     try {
-      return await trpc.sentinel.ask.mutate(payload);
-    } catch (error) {
-      try {
-        return await apiFetch<AiChatResponse>('/ai/chat', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-      } catch (fallbackError) {
-        if (!import.meta.env.DEV) throw fallbackError;
-      }
+      return await apiFetch<AiChatResponse>('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (requestError) {
+      if (!import.meta.env.DEV) throw requestError;
       return {
         reply:
           [
-            'Recommended action:',
-            'Use demo mode to practice the moderation workflow, then verify the same action in the live subreddit before confirming.',
+            'Sentinel AI could not reach the server-side Groq service.',
             '',
-            'Reasoning:',
-            `Local preview could not reach the Devvit server for "${payload.prompt}", so Sentinel is using a deterministic preview fallback.`,
+            'Cause:',
+            'The Devvit server API is unavailable in local Vite preview, so no Groq request was made.',
             '',
-            'Relevant rules:',
-            'Use subreddit rules, report reasons, saved responses, and consensus for high-impact cases.',
-            '',
-            'Suggested response:',
-            'Hi, thanks for reaching out. We are reviewing this against the community rules and will take the safest appropriate next step.',
-            '',
-            'Risk level:',
-            'medium',
-            '',
-            'Confidence:',
-            'low',
-            '',
-            'Next safe step:',
-            'Open the relevant module, gather context, and avoid live writes until a confirmation gate is shown.',
-            '',
-            'No action was performed:',
-            'This preview fallback did not touch Reddit.',
+            'Recovery action:',
+            'Run the Devvit playtest server, verify devvit.json allows api.groq.com, save a Groq API key in Settings, then use Test Groq Connection.',
           ].join('\n'),
-        model: 'Preview local RAG',
-        status: 'fallback',
+        model: 'Groq unavailable in preview',
+        status: 'error',
         promptPreview: payload.prompt,
+        reasoningSummary: 'No AI answer was generated because the server-side Groq service was unreachable.',
+        recommendedAction: 'Start Devvit server and test Groq connection.',
+        riskLevel: 'medium',
+        relatedPolicy: 'Sentinel Groq configuration',
+        confidence: 'low',
+        nextSuggestedAction: 'Fix Groq service access before using Sentinel.',
+        modeLabel: 'demo-only',
+        suggestedTasks: [],
+        errorReason: 'Devvit server was unavailable in local Vite preview; Groq was not called.',
         modelStatus: {
-          status: 'fallback',
-          provider: 'local',
-          model: 'preview-local-rag',
+          status: 'error',
+          provider: 'none',
+          model: 'server-side Groq',
           lastError: 'Devvit server was unavailable in local Vite preview.',
         },
         sources: [
@@ -782,6 +818,25 @@ export const api = {
         ],
       };
     }
+  },
+
+  async getSentinelSettings(): Promise<SentinelSettingsResponse> {
+    return await apiFetch<SentinelSettingsResponse>('/ai/settings');
+  },
+
+  async updateSentinelSettings(payload: UpdateSentinelSettingsRequest): Promise<SentinelSettingsResponse> {
+    return await apiFetch<SentinelSettingsResponse>('/ai/settings', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async testGroqConnection(): Promise<TestGroqResponse> {
+    return await apiFetch<TestGroqResponse>('/ai/test', { method: 'POST' });
+  },
+
+  async rebuildSentinelRag(): Promise<{ ok: boolean; rebuiltAt: string; count: number }> {
+    return await apiFetch<{ ok: boolean; rebuiltAt: string; count: number }>('/ai/rag/rebuild', { method: 'POST' });
   },
 
   async getRemovalReasons(): Promise<{ reasons: Array<{ id: string; title: string; message: string }> }> {

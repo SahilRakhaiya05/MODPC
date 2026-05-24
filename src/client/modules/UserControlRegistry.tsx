@@ -139,7 +139,7 @@ export const UserControlRegistry: React.FC<UserControlRegistryProps> = ({ trigge
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '16px', flexGrow: 1, minHeight: 0 }}>
+      <div className="registry-grid-layout">
         {/* Left Column: Registered Users list */}
         <div 
           className="glass-panel"

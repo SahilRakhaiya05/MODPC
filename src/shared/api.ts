@@ -29,6 +29,14 @@ export type ThresholdMode = 'simple_majority' | 'fixed_count' | 'two_thirds';
 
 export type ThemeMode = 'authentic' | 'modern' | 'high_contrast';
 
+export type WorkspaceMode = 'live' | 'training';
+
+export type WallpaperId = 'dotted' | 'wall1' | 'office-party' | 'plain';
+
+export type AppMode = 'live' | 'demo';
+
+export type ModDeskRole = 'owner' | 'admin' | 'moderator' | 'trainee' | 'observer';
+
 export type ModContext = {
   username: string | null;
   subredditName: string;
@@ -39,7 +47,10 @@ export type ModContext = {
 export type AuthErrorCode =
   | 'NOT_LOGGED_IN'
   | 'NOT_MODERATOR'
+  | 'NOT_APPROVED'
   | 'MISSING_PERMISSION'
+  | 'LIVE_MODE_REQUIRED'
+  | 'DEMO_MODE_ONLY'
   | 'REDDIT_API_UNAVAILABLE';
 
 export type ModuleCapability = {
@@ -61,6 +72,9 @@ export type SessionResponse = {
   subredditName: string;
   isModerator: boolean;
   modPermissions: string[];
+  modDeskRole: ModDeskRole;
+  workspaceMode: WorkspaceMode;
+  liveWritesEnabled: boolean;
   subredditIconUrl: string | null;
   subredditSubscribers: number | null;
   installs: SubredditInstall[];
@@ -76,11 +90,8 @@ export type SessionResponse = {
   };
 };
 
-export type WorkspaceMode = 'live' | 'training';
-
-export type AppMode = 'live' | 'demo';
-
-export type AIStatus = 'connected' | 'fallback' | 'disabled' | 'error' | 'timeout';
+export type AIStatus = 'connected' | 'disabled' | 'error' | 'timeout';
+export type AiChatStatus = 'success' | 'not_configured' | 'error';
 
 export type CommunityStatus = 'installed' | 'not_installed' | 'missing_permissions' | 'unknown';
 
@@ -105,6 +116,18 @@ export type AppSettings = {
   scenarioDifficultyMix: string;
   /** 'live' = real Reddit data only. 'training' = unlocks Mod Academy + safe sandbox scenarios. Defaults to 'live'. */
   workspaceMode: WorkspaceMode;
+  /** Desktop wallpaper preset id — see public/wallpaper/* for matching image files. */
+  wallpaperId: WallpaperId;
+  liveWritesEnabled: boolean;
+  liveModeEnabledBy: string | null;
+  liveModeEnabledAt: string | null;
+  auditRetentionDays: number;
+  sentinelModel: string;
+  sentinelTemperature: number;
+  sentinelMaxTokens: number;
+  sentinelRagEnabled: boolean;
+  sentinelAllowedTools: string[];
+  sentinelAutomationEnabled: boolean;
 };
 
 export type ModeratorProfile = {
@@ -134,6 +157,8 @@ export type TrainingScenario = {
   difficulty: 'easy' | 'medium' | 'hard';
   explanation: string;
   tags: string[];
+  source: 'mock' | 'reddit_read_only' | 'live_shadow';
+  sourceRef?: string;
   createdBy: string;
   createdAt: string;
   status: 'active' | 'archived';
@@ -221,10 +246,16 @@ export type QueueItem = {
 export type AuditEvent = {
   eventId: string;
   actor: string;
+  actorRole?: ModDeskRole;
+  mode?: WorkspaceMode;
+  subreddit?: string;
   eventType: string;
   entityType: string;
   entityId: string;
   summary: string;
+  sourceModule?: string;
+  result?: 'success' | 'failure' | 'simulated';
+  redditResponse?: string;
   before?: unknown;
   after?: unknown;
   createdAt: string;
@@ -349,16 +380,77 @@ export type AiChatRequest = {
 export type AiChatResponse = {
   reply: string;
   model: string;
-  status: 'success' | 'fallback';
+  status: AiChatStatus;
   sources: AiContextSource[];
   promptPreview: string;
+  reasoningSummary: string;
+  recommendedAction: string;
+  riskLevel: Severity;
+  relatedPolicy: string;
+  confidence: ConfidenceLevel;
+  nextSuggestedAction: string;
+  modeLabel: 'demo-only' | 'live-capable';
+  suggestedTasks: SentinelTaskDraft[];
+  errorReason?: string;
   modelStatus: {
     status: AIStatus;
-    provider: 'groq' | 'local' | 'none';
+    provider: 'groq' | 'none';
     model?: string;
     lastError?: string;
     latencyMs?: number;
   };
+};
+
+export type SentinelTaskDraft = {
+  taskId: string;
+  title: string;
+  type:
+    | 'draft_modmail_reply'
+    | 'create_consensus_ticket'
+    | 'generate_shift_handoff'
+    | 'prepare_automod_patch'
+    | 'summarize_queue'
+    | 'create_training_case'
+    | 'create_saved_response'
+    | 'prepare_ban_recommendation'
+    | 'open_live_confirmation';
+  status: 'draft' | 'simulated' | 'live_confirmation_required' | 'executed';
+  mode: WorkspaceMode;
+  permissionRequired?: string;
+  summary: string;
+};
+
+export type SentinelSettingsResponse = {
+  hasApiKey: boolean;
+  model: string;
+  envModel: string | null;
+  temperature: number;
+  maxTokens: number;
+  ragEnabled: boolean;
+  allowedTools: string[];
+  automationEnabled: boolean;
+  lastSuccessAt: string | null;
+  lastLatencyMs: number | null;
+  lastError: string | null;
+};
+
+export type UpdateSentinelSettingsRequest = {
+  apiKey?: string;
+  clearApiKey?: boolean;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  ragEnabled?: boolean;
+  allowedTools?: string[];
+  automationEnabled?: boolean;
+};
+
+export type TestGroqResponse = {
+  ok: boolean;
+  status: AIStatus;
+  model: string;
+  latencyMs: number | null;
+  message: string;
 };
 
 export type CapabilityStatus = 'available' | 'limited' | 'unavailable' | 'needs_permission' | 'demo_only' | 'error';
@@ -494,6 +586,15 @@ export type UpdateSettingsRequest = Partial<
     | 'templateApprovalRequired'
     | 'scenarioDifficultyMix'
     | 'workspaceMode'
+    | 'wallpaperId'
+    | 'liveWritesEnabled'
+    | 'auditRetentionDays'
+    | 'sentinelModel'
+    | 'sentinelTemperature'
+    | 'sentinelMaxTokens'
+    | 'sentinelRagEnabled'
+    | 'sentinelAllowedTools'
+    | 'sentinelAutomationEnabled'
   >
 >;
 

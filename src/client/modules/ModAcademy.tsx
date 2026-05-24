@@ -1,24 +1,25 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { TrainingScenario, ModeratorProfile } from '../types';
+import type { TrainingScenario, ModeratorProfile } from '../types';
 import { api } from '../utils/api';
 import { ProgressMeter } from '../components/ProgressMeter';
 
-interface ModAcademyProps {
+type ModAcademyProps = {
   profile: ModeratorProfile;
+  mode: 'demo' | 'live';
   onProfileUpdate: (p: ModeratorProfile) => void;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
-}
+};
 
 const SUBREDDIT_RULES = [
-  { id: 'rule-1', title: 'Rule 1: Civility & Respect' },
-  { id: 'rule-2', title: 'Rule 2: Relevance & Off-Topic' },
-  { id: 'rule-3', title: 'Rule 3: Commercial Spam & Promo' },
-  { id: 'rule-4', title: 'Rule 4: Repost & Duplicate Content' },
-  { id: 'rule-5', title: 'Rule 5: User Safety & Self-Harm' }
+  { id: 'rule-1', title: 'Rule 1: Civility & Respect', help: 'Harassment, insults, hostility, and personal attacks.' },
+  { id: 'rule-2', title: 'Rule 2: Relevance & Off-Topic', help: 'Content outside the community scope or derailing discussion.' },
+  { id: 'rule-3', title: 'Rule 3: Commercial Spam & Promo', help: 'Affiliate links, repetitive promotion, suspicious domains, and spam waves.' },
+  { id: 'rule-4', title: 'Rule 4: Repost & Duplicate Content', help: 'Duplicate content that belongs in an existing thread or megathread.' },
+  { id: 'rule-5', title: 'Rule 5: User Safety & Self-Harm', help: 'Safety escalations, doxxing, threats, and self-harm workflows.' }
 ];
 
-export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate, triggerToast }) => {
+export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, mode, onProfileUpdate, triggerToast }) => {
   const [scenario, setScenario] = useState<TrainingScenario | null>(null);
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [selectedRuleId, setSelectedRuleId] = useState<string>('');
@@ -112,6 +113,11 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
     : 0;
   const currentLevelProgress = profile.xp - prevLevelXp;
   const currentLevelMax = nextLevelXp - prevLevelXp;
+  const sourceLabel = scenario?.source === 'reddit_read_only'
+    ? 'Real Reddit Training Case'
+    : scenario?.source === 'live_shadow'
+      ? 'Live Queue Shadow Training'
+      : 'Mock Scenario';
 
   return (
     <div className="mod-academy" style={{ display: 'flex', flexDirection: 'column', gap: '14px', height: '100%', fontFamily: "var(--font-body)" }}>
@@ -134,7 +140,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
               RANK: {profile.roleLabel.toUpperCase()}
             </div>
             <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
-              Level {profile.trainingLevel} - Subreddit Shift Simulator
+              Level {profile.trainingLevel} - Demo / Training Mode
             </div>
           </div>
         </div>
@@ -161,6 +167,26 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
             <span style={{ color: '#f8fafc' }}>{profile.totalScenarios}</span>
           </div>
         </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '10px', fontWeight: 800, color: mode === 'live' ? '#fbbf24' : '#34d399', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '999px', padding: '5px 9px' }}>
+            {mode === 'live' ? 'LIVE MODE' : 'DEMO MODE'}
+          </span>
+          <span style={{ fontSize: '10px', fontWeight: 700, color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '999px', padding: '5px 9px' }}>
+            {sourceLabel}
+          </span>
+        </div>
+      </div>
+
+      <div style={{
+        border: '1px solid rgba(52, 211, 153, 0.25)',
+        background: 'rgba(52, 211, 153, 0.08)',
+        color: '#bbf7d0',
+        borderRadius: '10px',
+        padding: '8px 12px',
+        fontSize: '12px',
+        lineHeight: 1.4
+      }}>
+        DEMO MODE - real Reddit content may be previewed, but actions are simulated and will not affect Reddit.
       </div>
 
       {/* Main Sandbox Frame */}
@@ -170,8 +196,8 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
           <span style={{ fontSize: '12px', color: '#94a3b8', fontFamily: "'Fira Code', monospace" }}>SYNCHRONIZING CASE FLAGGERS...</span>
         </div>
       ) : scenario ? (
-        <div style={{ display: 'flex', flexGrow: 1, gap: '14px', minHeight: 0, flexDirection: 'column' }}>
-          <div style={{ display: 'flex', gap: '14px', flexGrow: 1, minHeight: 0 }}>
+        <div style={{ display: 'flex', flexGrow: 1, gap: '14px', minHeight: 0, flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="academy-grid-layout">
             {/* Case file body */}
             <div style={{
               flexGrow: 2,
@@ -229,7 +255,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                 flexGrow: 1,
                 borderLeft: '4px solid var(--accent-gold)'
               }}>
-                {scenario.bodyExcerpt}
+                {scenario.bodyExcerpt || 'No case text was returned for this scenario. Treat this as an incomplete packet and skip or escalate.'}
               </div>
 
               {/* Red Flags / Reports */}
@@ -256,7 +282,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
             </div>
 
             {/* Shift controls */}
-            <div style={{ flexGrow: 1, width: '240px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', paddingRight: '2px' }}>
               {/* Action grid */}
               <div style={{
                 background: 'rgba(255, 255, 255, 0.02)',
@@ -295,11 +321,33 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                         transform: isSelected ? 'scale(1.02)' : 'none'
                       }}
                     >
-                      <span style={{ marginRight: '6px' }}>{act.icon}</span> {act.label}
+                      <span style={{ marginRight: '6px' }}>{act.icon}</span>{' '}
+                      {mode === 'demo' && act.id === 'approve'
+                        ? 'SIMULATE APPROVE'
+                        : mode === 'demo' && act.id === 'remove'
+                          ? 'SIMULATE REMOVE'
+                          : mode === 'demo' && act.id === 'escalate'
+                            ? 'SIMULATE ESCALATE'
+                            : act.label}
                     </button>
                   );
                 })}
               </div>
+
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="glass-btn primary"
+                style={{
+                  width: '100%',
+                  padding: '11px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  flexShrink: 0
+                }}
+              >
+                COMMIT ACTION
+              </button>
 
               {/* Supporting Rules */}
               {selectedAction && selectedAction !== 'skip' && (
@@ -311,10 +359,13 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '6px',
-                  flexGrow: 1,
+                  maxHeight: '230px',
                   overflowY: 'auto'
                 }}>
                   <span className="glass-label">SUPPORTING STANDARD RULE</span>
+                  <span style={{ fontSize: '10px', color: '#94a3b8', lineHeight: 1.4 }}>
+                    Select the subreddit rule that best supports the action. Senior moderators use this to review consistency.
+                  </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {SUBREDDIT_RULES.map(rule => {
                       const isSelected = selectedRuleId === rule.id;
@@ -351,7 +402,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                   padding: '12px'
                 }}>
                   <span className="glass-label">CONFIDENCE INDEX GUESS</span>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(32px, 1fr))', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
                     {[1, 2, 3, 4, 5].map(lvl => {
                       const isSelected = confidence === lvl;
                       return (
@@ -360,7 +411,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                           onClick={() => setConfidence(lvl)}
                           className="glass-btn"
                           style={{
-                            width: '30px',
+                            width: '100%',
                             height: '30px',
                             padding: 0,
                             borderRadius: '8px',
@@ -381,11 +432,28 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
                   </div>
                 </div>
               )}
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="glass-btn primary"
+                style={{
+                  display: 'none',
+                  width: '100%',
+                  padding: '11px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  position: 'sticky',
+                  bottom: 0,
+                  zIndex: 2
+                }}
+              >
+                COMMIT ACTION
+              </button>
             </div>
           </div>
 
           {/* Submit block */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 0' }}>
+          <div style={{ display: 'none', justifyContent: 'flex-end', padding: '4px 0' }}>
             <button
               onClick={handleSubmit}
               disabled={isLoading}
@@ -424,7 +492,7 @@ export const ModAcademy: React.FC<ModAcademyProps> = ({ profile, onProfileUpdate
           justifyContent: 'center',
           padding: '20px'
         }}>
-          <div className="glass-window glass-panel" style={{ width: '420px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="glass-window glass-panel" style={{ width: 'min(420px, calc(100vw - 24px))', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
             {/* Header */}
             <div style={{
               display: 'flex',

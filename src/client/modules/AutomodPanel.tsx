@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
 type AutomodPanelProps = {
+  mode: 'demo' | 'live';
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
 };
 
-export const AutomodPanel: React.FC<AutomodPanelProps> = ({ triggerToast }) => {
+export const AutomodPanel: React.FC<AutomodPanelProps> = ({ mode, triggerToast }) => {
   const [yaml, setYaml] = useState('');
   const [originalYaml, setOriginalYaml] = useState('');
   const [loading, setLoading] = useState(true);
@@ -144,8 +145,8 @@ action_reason: "High hostility toxicity warning trigger"
     }
     try {
       setLoading(true);
-      await api.saveAutomod(yaml, reason);
-      triggerToast('Wiki config/automod committed successfully!', 'success');
+      await api.saveAutomod(yaml, reason, mode === 'live' && confirmPublish);
+      triggerToast(mode === 'live' ? 'Wiki config/automod committed successfully!' : 'Simulated Automod save stored in Demo / Training Mode.', 'success');
       setValidationReport({ status: 'idle', message: '', errors: [] });
       setOriginalYaml(yaml);
       setConfirmPublish(false);
@@ -163,13 +164,16 @@ action_reason: "High hostility toxicity warning trigger"
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', color: '#e2e8f0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+      <div className="automod-header">
         <div>
           <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '13px', fontWeight: 700, color: 'var(--accent-gold)' }}>
             AUTOMODERATOR SYNTAX CONTROLLER
           </h3>
           <span style={{ fontSize: '10px', color: 'var(--glass-text-muted)', fontFamily: 'var(--font-mono)' }}>
             LOADED SOURCE: /wiki/config/automod
+          </span>
+          <span style={{ display: 'block', marginTop: '4px', fontSize: '10px', color: mode === 'live' ? '#f59e0b' : '#34d399', fontFamily: 'var(--font-mono)' }}>
+            {mode === 'live' ? 'LIVE REDDIT MODE - publishing affects Reddit after confirmation' : 'DEMO / TRAINING MODE - saves only to the Automod sandbox'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -182,7 +186,7 @@ action_reason: "High hostility toxicity warning trigger"
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px', gap: '16px', flexGrow: 1, minHeight: 0 }}>
+      <div className="automod-grid-layout">
         {/* Editor Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ flexGrow: 1, position: 'relative', minHeight: 0 }}>
@@ -208,7 +212,7 @@ action_reason: "High hostility toxicity warning trigger"
             />
           </div>
           
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="automod-footer-actions">
             <span style={{ fontSize: '10px', fontFamily: 'var(--font-heading)', color: 'var(--glass-text-muted)', minWidth: '90px' }}>
               COMMIT REASON:
             </span>
@@ -270,7 +274,9 @@ action_reason: "High hostility toxicity warning trigger"
                   checked={confirmPublish}
                   onChange={(event) => setConfirmPublish(event.target.checked)}
                 />
-                I understand this publishes to the live Automod wiki for this community.
+                {mode === 'live'
+                  ? 'I understand this publishes to the live Automod wiki for this community.'
+                  : 'I understand this is a simulated sandbox save and will not affect Reddit.'}
               </label>
             </div>
             {validationReport.status === 'idle' && (

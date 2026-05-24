@@ -1,7 +1,7 @@
 import { navigateTo } from '@devvit/web/client';
 import React, { useEffect, useMemo, useState } from 'react';
 import type { AppSettings, ModeratorProfile } from '../types';
-import type { SessionResponse, SubredditInstall } from '../../shared/api';
+import type { SentinelSettingsResponse, SessionResponse, SubredditInstall } from '../../shared/api';
 import { api } from '../utils/api';
 
 type SettingsPanelProps = {
@@ -31,6 +31,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [trainingRequiredLevel, setTrainingRequiredLevel] = useState(settings.trainingRequiredLevel);
   const [themeMode, setThemeMode] = useState(settings.themeMode);
   const [workspaceMode, setWorkspaceMode] = useState<'live' | 'training'>(settings.workspaceMode ?? 'live');
+  const [wallpaperId, setWallpaperId] = useState<'dotted' | 'wall1' | 'office-party' | 'plain'>(
+    settings.wallpaperId ?? 'wall1'
+  );
+  const [liveWritesEnabled, setLiveWritesEnabled] = useState(Boolean(settings.liveWritesEnabled));
+  const [sentinelSettings, setSentinelSettings] = useState<SentinelSettingsResponse | null>(null);
+  const [groqApiKey, setGroqApiKey] = useState('');
+  const [groqModel, setGroqModel] = useState(settings.sentinelModel ?? 'llama-3.3-70b-versatile');
+  const [groqTemperature, setGroqTemperature] = useState(settings.sentinelTemperature ?? 0.2);
+  const [groqMaxTokens, setGroqMaxTokens] = useState(settings.sentinelMaxTokens ?? 900);
+  const [ragEnabled, setRagEnabled] = useState(settings.sentinelRagEnabled ?? true);
+  const [automationEnabled, setAutomationEnabled] = useState(Boolean(settings.sentinelAutomationEnabled));
+  const [groqBusy, setGroqBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -78,10 +90,70 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       }
     };
     void loadCommunities();
+    api.getSentinelSettings()
+      .then((res) => {
+        if (!isMounted) return;
+        setSentinelSettings(res);
+        setGroqModel(res.model);
+        setGroqTemperature(res.temperature);
+        setGroqMaxTokens(res.maxTokens);
+        setRagEnabled(res.ragEnabled);
+        setAutomationEnabled(res.automationEnabled);
+      })
+      .catch((err: unknown) => console.error(err));
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const saveGroqSettings = async () => {
+    setGroqBusy(true);
+    try {
+      const payload = {
+        model: groqModel,
+        temperature: groqTemperature,
+        maxTokens: groqMaxTokens,
+        ragEnabled,
+        automationEnabled,
+        ...(groqApiKey.trim() ? { apiKey: groqApiKey.trim() } : {}),
+      };
+      const res = await api.updateSentinelSettings(payload);
+      setSentinelSettings(res);
+      setGroqApiKey('');
+      triggerToast('Sentinel settings saved server-side.', 'success');
+    } catch (err) {
+      console.error(err);
+      triggerToast('Failed to save Sentinel settings.', 'error');
+    } finally {
+      setGroqBusy(false);
+    }
+  };
+
+  const testGroq = async () => {
+    setGroqBusy(true);
+    try {
+      const res = await api.testGroqConnection();
+      triggerToast(res.message, res.ok ? 'success' : 'error');
+      const settingsResult = await api.getSentinelSettings();
+      setSentinelSettings(settingsResult);
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : 'Groq test failed.', 'error');
+    } finally {
+      setGroqBusy(false);
+    }
+  };
+
+  const rebuildRag = async () => {
+    setGroqBusy(true);
+    try {
+      const res = await api.rebuildSentinelRag();
+      triggerToast(`Workspace context refreshed with ${res.count} chunks.`, 'success');
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : 'Context refresh failed.', 'error');
+    } finally {
+      setGroqBusy(false);
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -99,6 +171,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         trainingRequiredLevel: Number(trainingRequiredLevel),
         themeMode,
         workspaceMode,
+        wallpaperId,
+        liveWritesEnabled: workspaceMode === 'live' && liveWritesEnabled,
       });
 
       if (res.success) {
@@ -233,8 +307,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             })}
             <article>
               <strong>AI</strong>
-              <span className="limited">Fallback available</span>
-              <em>Groq runs server-side when configured. Local RAG fallback remains available and never performs Reddit actions.</em>
+              <span className={sentinelSettings?.hasApiKey ? 'available' : 'unavailable'}>{sentinelSettings?.hasApiKey ? 'Groq ready' : 'Needs Groq key'}</span>
+              <em>Sentinel uses Groq directly. If Groq is blocked or not configured, it shows the real error instead of a fake local answer.</em>
             </article>
           </div>
         </section>
@@ -242,11 +316,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <section className="settings-card">
           <span className="module-eyebrow">Groq setup</span>
           <div className="settings-groq-box">
-            <strong>API key status is server-side only</strong>
-            <p>ModDesk never exposes <code>GROQ_API_KEY</code> to the client. Sentinel will show “Groq connected” after a successful model call, or “Fallback active” when the key is missing, rate-limited, timed out, or unavailable.</p>
+            <strong>{sentinelSettings?.hasApiKey ? 'Groq API key saved server-side' : 'Sentinel AI is not configured'}</strong>
+            <p>ModDesk never exposes <code>GROQ_API_KEY</code> to the client. Sentinel uses Groq directly; if Devvit blocks <code>api.groq.com</code>, the chat shows that network permission error.</p>
+          </div>
+          <div className="settings-fields">
+            <label>
+              <span>Groq API key</span>
+              <input type="password" value={groqApiKey} onChange={(event) => setGroqApiKey(event.target.value)} placeholder={sentinelSettings?.hasApiKey ? 'Saved server-side - enter a new key to replace' : 'gsk_...'} className="glass-input" autoComplete="off" />
+            </label>
+            <label>
+              <span>Model</span>
+              <select value={groqModel} onChange={(event) => setGroqModel(event.target.value)} className="glass-input">
+                <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                <option value="gemma2-9b-it">gemma2-9b-it</option>
+              </select>
+            </label>
+            <label>
+              <span>Temperature</span>
+              <input type="number" min="0" max="1" step="0.1" value={groqTemperature} onChange={(event) => setGroqTemperature(Number(event.target.value))} className="glass-input" />
+            </label>
+            <label>
+              <span>Max tokens</span>
+              <input type="number" min="256" max="4096" value={groqMaxTokens} onChange={(event) => setGroqMaxTokens(Number(event.target.value))} className="glass-input" />
+            </label>
+          </div>
+          <div className="settings-capability-grid">
+            <article>
+              <strong>Model status</strong>
+              <span className={sentinelSettings?.lastError ? 'unavailable' : sentinelSettings?.lastSuccessAt ? 'available' : 'limited'}>
+                {sentinelSettings?.lastSuccessAt ? 'Last test passed' : sentinelSettings?.lastError ? 'Needs attention' : 'Not tested'}
+              </span>
+              <em>{sentinelSettings?.lastError ?? (sentinelSettings?.lastLatencyMs ? `${sentinelSettings.lastLatencyMs}ms latency` : 'Use Test Groq Connection before relying on Sentinel.')}</em>
+            </article>
+            <article>
+              <strong>Workspace context</strong>
+              <span className={ragEnabled ? 'available' : 'limited'}>{ragEnabled ? 'Enabled' : 'Disabled'}</span>
+              <em>Indexes rules, Automod, queue, templates, modmail when allowed, consensus, audit, and training context.</em>
+            </article>
+          </div>
+          <label className="settings-live-write-toggle">
+            <input type="checkbox" checked={ragEnabled} onChange={(event) => setRagEnabled(event.target.checked)} />
+            <span>Enable workspace context and source citations. Turn this off for a more general ChatGPT-style assistant.</span>
+          </label>
+          <label className="settings-live-write-toggle">
+            <input type="checkbox" checked={automationEnabled} onChange={(event) => setAutomationEnabled(event.target.checked)} />
+            <span>Allow Sentinel automations to draft, summarize, classify, and recommend. Destructive live actions still require human confirmation.</span>
+          </label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" className="glass-btn primary" disabled={groqBusy} onClick={() => void saveGroqSettings()}>Save Sentinel settings</button>
+            <button type="button" className="glass-btn" disabled={groqBusy} onClick={() => void testGroq()}>Test Groq Connection</button>
+            <button type="button" className="glass-btn" disabled={groqBusy} onClick={() => void rebuildRag()}>Refresh Context</button>
           </div>
         </section>
-
         <section className="settings-card compact">
           <span className="module-eyebrow">Operator</span>
           <div className="settings-fields">
@@ -276,8 +399,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               className={workspaceMode === 'live' ? 'active' : ''}
               onClick={() => setWorkspaceMode('live')}
             >
-              <strong>Live</strong>
-              <span>Only real Reddit data. Queue, modmail, mod log, users, automod all read from the Reddit API.</span>
+              <strong>Live Reddit Mode</strong>
+              <span>Loads real Reddit data. Destructive actions require Reddit moderator permission, owner/admin enablement, and CONFIRM_LIVE_ACTION.</span>
             </button>
             <button
               type="button"
@@ -286,10 +409,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               className={workspaceMode === 'training' ? 'active' : ''}
               onClick={() => setWorkspaceMode('training')}
             >
-              <strong>Training</strong>
-              <span>Unlocks Mod Academy + sandbox scenarios on fake content. No destructive actions affect the subreddit.</span>
+              <strong>Demo / Training Mode</strong>
+              <span>Real Reddit content may be previewed for training, but actions are simulated and will not affect Reddit.</span>
             </button>
           </div>
+          <label className="settings-live-write-toggle">
+            <input
+              type="checkbox"
+              checked={liveWritesEnabled}
+              disabled={workspaceMode !== 'live'}
+              onChange={(event) => setLiveWritesEnabled(event.target.checked)}
+            />
+            <span>
+              Enable live Reddit writes for approved moderators.
+              {settings.liveModeEnabledBy && settings.liveModeEnabledAt
+                ? ` Enabled by u/${settings.liveModeEnabledBy} on ${new Date(settings.liveModeEnabledAt).toLocaleString()}.`
+                : ' Live writes are locked by default.'}
+            </span>
+          </label>
         </section>
 
         <section className="settings-card">
@@ -358,6 +495,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <option value="high-contrast">Dark mode</option>
             </select>
           </label>
+
+          <div className="settings-wallpaper-row">
+            <span className="settings-wallpaper-label">Desktop background</span>
+            <div className="settings-wallpaper-grid" role="radiogroup" aria-label="Desktop background">
+              {(
+                [
+                  { id: 'wall1', label: 'ModDesk desk' },
+                  { id: 'office-party', label: 'Office party' },
+                  { id: 'dotted', label: 'Dotted paper' },
+                  { id: 'plain', label: 'Plain' },
+                ] as const
+              ).map((wp) => (
+                <button
+                  key={wp.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={wallpaperId === wp.id}
+                  className={`settings-wallpaper-card${wallpaperId === wp.id ? ' active' : ''}`}
+                  data-wallpaper={wp.id}
+                  onClick={() => {
+                    setWallpaperId(wp.id);
+                    onSettingsUpdate({ ...settings, wallpaperId: wp.id });
+                  }}
+                  title={wp.label}
+                >
+                  <span className="settings-wallpaper-thumb" aria-hidden="true" />
+                  <em>{wp.label}</em>
+                </button>
+              ))}
+            </div>
+            <p className="settings-wallpaper-hint">
+              Drop new image files into <code>public/wallpaper/</code> to add more presets.
+            </p>
+          </div>
+
           <button type="button" className="glass-btn" onClick={onResetDesktop}>
             Reset desktop layout
           </button>

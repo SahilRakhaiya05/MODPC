@@ -126,20 +126,10 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
   }).sort((a, b) => b.severityScore - a.severityScore);
 
   return (
-    <div style={{ display: 'flex', gap: '16px', height: '100%', minHeight: 0, fontFamily: 'var(--font-body)' }}>
+    <div className="queue-console-layout">
       {/* Sidebar priority queue list */}
       <div 
-        className="glass-panel" 
-        style={{ 
-          width: '260px', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          minHeight: 0, 
-          background: 'var(--glass-bg)', 
-          borderColor: 'var(--glass-border)',
-          borderRadius: '12px',
-          overflow: 'hidden'
-        }}
+        className="glass-panel queue-console-sidebar" 
       >
         <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: '11px', fontWeight: 700, color: 'var(--glass-text-muted)', letterSpacing: '0.05em' }}>
@@ -263,17 +253,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
 
       {/* Workspace triage detail pane */}
       <div 
-        className="glass-panel" 
-        style={{ 
-          flexGrow: 1, 
-          padding: '20px', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          backgroundColor: 'var(--glass-bg)', 
-          borderColor: 'var(--glass-border)',
-          borderRadius: '12px',
-          minHeight: 0 
-        }}
+        className="glass-panel queue-console-detail" 
       >
         {selectedItem ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', height: '100%' }}>
@@ -299,7 +279,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
             )}
 
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
+            <div className="queue-detail-header">
               <div>
                 <span 
                   style={{ 
@@ -329,7 +309,7 @@ export const QueueConsole: React.FC<QueueConsoleProps> = ({ profile, onProfileUp
             </div>
 
             {/* Content + author dossier side-by-side */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 240px', gap: '12px' }}>
+            <div className="queue-detail-grid">
               <div
                 className="glass-panel"
                 style={{

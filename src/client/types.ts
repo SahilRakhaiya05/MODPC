@@ -1,4 +1,4 @@
-export interface AppSettings {
+export type AppSettings = {
   subredditName: string;
   initializedAt: string;
   consensusThresholdMode: 'fixed' | 'percent';
@@ -17,7 +17,18 @@ export interface AppSettings {
   templateApprovalRequired?: boolean;
   scenarioDifficultyMix?: string;
   workspaceMode?: 'live' | 'training';
-}
+  wallpaperId?: 'dotted' | 'wall1' | 'office-party' | 'plain';
+  liveWritesEnabled?: boolean;
+  liveModeEnabledBy?: string | null;
+  liveModeEnabledAt?: string | null;
+  auditRetentionDays?: number;
+  sentinelModel?: string;
+  sentinelTemperature?: number;
+  sentinelMaxTokens?: number;
+  sentinelRagEnabled?: boolean;
+  sentinelAllowedTools?: string[];
+  sentinelAutomationEnabled?: boolean;
+};
 
 export interface ModeratorProfile {
   username: string;
@@ -46,6 +57,8 @@ export interface TrainingScenario {
   difficulty: 'easy' | 'medium' | 'hard';
   explanation: string;
   tags: string[];
+  source?: 'mock' | 'reddit_read_only' | 'live_shadow';
+  sourceRef?: string;
   status: 'active' | 'archived';
 }
 

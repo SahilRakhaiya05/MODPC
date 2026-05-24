@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
-import { buildStructuredFallbackReply } from '../services/sentinel/fallback';
 import type {
   ApiError,
   AiChatMessage,
@@ -24,6 +23,7 @@ import type {
   HandoffResponse,
   LiveInsightResponse,
   LiveInsightRule,
+  ModDeskRole,
   ModeratorProfile,
   QueueActionRequest,
   QueueItem,
@@ -37,16 +37,44 @@ import type {
   TemplateStatus,
   TicketDetailResponse,
   TicketStatus,
+  TestGroqResponse,
   TrainingAttempt,
   TrainingScenario,
   UpdateSettingsRequest,
+  UpdateSentinelSettingsRequest,
   VoteRequest,
 } from '../../shared/api';
 
 export const api = new Hono();
 
 const NS = 'moddesk-os:v1';
-const key = (name: string) => `${NS}:${context.subredditName ?? 'testsubreddit'}:${name}`;
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const DEFAULT_SENTINEL_TOOLS = [
+  'get_current_user_role',
+  'get_subreddit_rules',
+  'search_workspace_context',
+  'summarize_queue',
+  'draft_modmail_reply',
+  'create_saved_response_draft',
+  'create_consensus_ticket_draft',
+  'create_consensus_ticket',
+  'create_training_case',
+  'analyze_automod_yaml',
+  'prepare_automod_patch',
+  'prepare_automod_diff',
+  'summarize_queue',
+  'create_saved_response',
+  'prepare_ban_recommendation',
+  'generate_shift_handoff',
+  'check_live_action_permission',
+  'create_live_action_confirmation',
+  'write_audit_log',
+];
+const currentSubredditName = () => context.subredditName ?? 'testsubreddit';
+const keyFor = (subredditName: string, mode: 'live' | 'demo' | 'shared', name: string) =>
+  `${NS}:${subredditName}:${mode}:${name}`;
+const key = (name: string, mode: 'live' | 'demo' | 'shared' = 'live') =>
+  keyFor(currentSubredditName(), mode, name);
 const now = () => new Date().toISOString();
 const id = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -56,6 +84,7 @@ type ModContextState = {
   subredditName: string;
   isModerator: boolean;
   modPermissions: string[];
+  modDeskRole: ModDeskRole;
   subredditIconUrl: string | null;
   subredditSubscribers: number | null;
   redisStatus: 'ok' | 'degraded';
@@ -66,6 +95,8 @@ type RagDocument = {
   title: string;
   type: AiContextSource['type'];
   content: string;
+  sensitive?: boolean;
+  sourceRef?: string;
 };
 
 type LiveTriggerEvent = {
@@ -211,7 +242,18 @@ const defaultSettings = (subredditName: string): AppSettings => ({
   anonymousVotesUntilClosed: false,
   templateApprovalRequired: false,
   scenarioDifficultyMix: 'balanced',
-  workspaceMode: 'live',
+  workspaceMode: 'training',
+  wallpaperId: 'wall1',
+  liveWritesEnabled: false,
+  liveModeEnabledBy: null,
+  liveModeEnabledAt: null,
+  auditRetentionDays: 180,
+  sentinelModel: GROQ_MODEL,
+  sentinelTemperature: 0.2,
+  sentinelMaxTokens: 900,
+    sentinelRagEnabled: true,
+  sentinelAllowedTools: DEFAULT_SENTINEL_TOOLS,
+  sentinelAutomationEnabled: false,
 });
 
 const profileFor = (username: string): ModeratorProfile => ({
@@ -244,6 +286,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'The link pattern, new-account context, and repeated promotional wording make this a clear Rule 3 removal.',
     tags: ['spam', 'links', 'new-account'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -262,6 +305,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Filtering or holding for senior review preserves useful context while preventing the argument from escalating.',
     tags: ['civility', 'edge-case'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -280,6 +324,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Duplicate news should be redirected to the active megathread to keep discussion consolidated.',
     tags: ['duplicate', 'megathread'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -298,6 +343,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Urgent safety reports should be escalated and handled with care. Do not treat this as a points-earning queue clear.',
     tags: ['safety', 'urgent'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -316,6 +362,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Ambiguous high-impact political moderation benefits from consensus before locking or removing a visible thread.',
     tags: ['governance', 'brigading', 'high-impact'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -334,6 +381,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Posting personal information is a Reddit site-wide violation. Remove immediately and report to admins via the safety form.',
     tags: ['doxxing', 'site-wide', 'safety'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -352,6 +400,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Ban evasion is a site-wide violation. Escalate so a senior mod can submit to Reddit admins with the evidence trail.',
     tags: ['ban-evasion', 'site-wide'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -370,6 +419,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'NSFW content in a SFW community is a clear removal. Send a templated removal reason that points to the NSFW rule.',
     tags: ['nsfw', 'tagging'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -388,6 +438,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Brigades require a quick lock + admin report with the inbound subreddit. Escalate to consensus before removing the OP\'s on-topic post.',
     tags: ['brigading', 'vote-manipulation'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -406,6 +457,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Low-effort image posts in a discussion-only sub are removable. A short templated reply is enough.',
     tags: ['low-effort'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -424,6 +476,7 @@ const seedScenarios = (): TrainingScenario[] => [
     explanation:
       'Filter for senior review — let the discussion add the correction context rather than removing outright. Distinguish a correcting comment if available.',
     tags: ['misinformation', 'edge-case'],
+    source: 'mock',
     createdBy: 'system',
     createdAt: now(),
     status: 'active',
@@ -736,11 +789,31 @@ function baseCapabilities(isModerator: boolean): SessionResponse['capabilities']
   };
 }
 
+function hasRedditPermission(modContext: ModContextState, permission: string): boolean {
+  const permissions = modContext.modPermissions.map((item) => item.toLowerCase());
+  return permissions.includes('all') || permissions.includes(permission.toLowerCase());
+}
+
+function inferModDeskRole(isTopMod: boolean, modPermissions: string[]): ModDeskRole {
+  const normalized = modPermissions.map((item) => item.toLowerCase());
+  if (isTopMod || normalized.includes('all')) return 'owner';
+  if (['access', 'config', 'wiki', 'mail', 'posts'].some((permission) => normalized.includes(permission))) return 'admin';
+  return 'moderator';
+}
+
+function roleCan(role: ModDeskRole, capability: 'read' | 'live_write' | 'manage_roles' | 'settings'): boolean {
+  if (capability === 'read') return role !== 'observer' || role === 'observer';
+  if (capability === 'live_write') return role === 'owner' || role === 'admin' || role === 'moderator';
+  if (capability === 'manage_roles' || capability === 'settings') return role === 'owner' || role === 'admin';
+  return false;
+}
+
 async function getModContext(): Promise<ModContextState> {
   const username = (await reddit.getCurrentUsername()) ?? null;
   const subredditName = context.subredditName ?? 'testsubreddit';
   let isModerator = false;
   let modPermissions: string[] = [];
+  let modDeskRole: ModDeskRole = 'observer';
   let subredditIconUrl: string | null = null;
   let subredditSubscribers: number | null = null;
   try {
@@ -750,10 +823,12 @@ async function getModContext(): Promise<ModContextState> {
       isModerator = Boolean(me);
       if (me) {
         modPermissions = (me.modPermissions.get(subredditName) ?? []).map((permission) => String(permission));
+        modDeskRole = inferModDeskRole(mods[0]?.username?.toLowerCase() === username.toLowerCase(), modPermissions);
       }
     }
   } catch {
     isModerator = false;
+    modDeskRole = 'observer';
   }
   try {
     const subreddit = await reddit.getSubredditByName(subredditName);
@@ -778,6 +853,7 @@ async function getModContext(): Promise<ModContextState> {
     subredditName,
     isModerator,
     modPermissions,
+    modDeskRole,
     subredditIconUrl,
     subredditSubscribers,
     redisStatus: 'ok' as const,
@@ -786,6 +862,7 @@ async function getModContext(): Promise<ModContextState> {
 
 async function getSession(): Promise<SessionResponse> {
   const modContext = await getModContext();
+  const settings = await getSettings(modContext.subredditName);
   const errors: SessionResponse['errors'] = [];
   if (!modContext.username) {
     errors.push({ code: 'NOT_LOGGED_IN', message: 'Reddit did not provide a logged-in user for this Devvit session.' });
@@ -814,6 +891,9 @@ async function getSession(): Promise<SessionResponse> {
     subredditName: modContext.subredditName,
     isModerator: modContext.isModerator,
     modPermissions: modContext.modPermissions,
+    modDeskRole: modContext.modDeskRole,
+    workspaceMode: settings.workspaceMode,
+    liveWritesEnabled: settings.liveWritesEnabled,
     subredditIconUrl: modContext.subredditIconUrl,
     subredditSubscribers: modContext.subredditSubscribers,
     installs,
@@ -833,6 +913,14 @@ async function requireModerator(): Promise<ModContextState & { username: string 
   return { ...modContext, username: modContext.username };
 }
 
+async function requireRole(capability: 'read' | 'live_write' | 'manage_roles' | 'settings'): Promise<ModContextState & { username: string }> {
+  const modContext = await requireModerator();
+  if (!roleCan(modContext.modDeskRole, capability)) {
+    throw new AuthError('NOT_APPROVED', 'Your ModDesk role does not allow this action.', 403);
+  }
+  return modContext;
+}
+
 function requireLiveConfirmation(confirmation: string | undefined): void {
   if (confirmation !== 'CONFIRM_LIVE_ACTION') {
     throw new AuthError(
@@ -841,6 +929,28 @@ function requireLiveConfirmation(confirmation: string | undefined): void {
       403
     );
   }
+}
+
+async function requireLiveWrite(
+  modContext: ModContextState & { username: string },
+  confirmation: string | undefined,
+  permission: string
+): Promise<AppSettings> {
+  const settings = await getSettings(modContext.subredditName);
+  if (settings.workspaceMode !== 'live') {
+    throw new AuthError('LIVE_MODE_REQUIRED', 'Demo / Training Mode cannot perform Reddit write actions.', 403);
+  }
+  if (!settings.liveWritesEnabled) {
+    throw new AuthError('MISSING_PERMISSION', 'Live Reddit Mode writes are locked until an owner/admin enables them.', 403);
+  }
+  if (!roleCan(modContext.modDeskRole, 'live_write')) {
+    throw new AuthError('NOT_APPROVED', 'Your ModDesk role cannot perform live Reddit writes.', 403);
+  }
+  if (!hasRedditPermission(modContext, permission)) {
+    throw new AuthError('MISSING_PERMISSION', `Reddit moderator permission "${permission}" is required.`, 403);
+  }
+  requireLiveConfirmation(confirmation);
+  return settings;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -866,6 +976,14 @@ function readAiRequest(value: unknown): AiChatRequest | undefined {
 
 function extractGroqText(value: unknown): string {
   if (!isRecord(value)) return '';
+  if (Array.isArray(value.choices)) {
+    const parts: string[] = [];
+    for (const choice of value.choices) {
+      if (!isRecord(choice) || !isRecord(choice.message)) continue;
+      if (typeof choice.message.content === 'string') parts.push(choice.message.content);
+    }
+    return parts.join('\n').trim();
+  }
   if (typeof value.output_text === 'string') return value.output_text;
   if (!Array.isArray(value.output)) return '';
   const parts: string[] = [];
@@ -914,14 +1032,72 @@ function retrieveContext(prompt: string, docs: RagDocument[], limit = 7): AiCont
     .slice(0, limit);
 }
 
+function chunkDocument(doc: RagDocument): RagDocument[] {
+  const content = doc.content.trim();
+  if (content.length <= 900) return [doc];
+  const chunks: RagDocument[] = [];
+  for (let start = 0; start < content.length; start += 700) {
+    chunks.push({
+      ...doc,
+      id: `${doc.id}:chunk-${chunks.length + 1}`,
+      title: `${doc.title} (${chunks.length + 1})`,
+      content: content.slice(start, start + 900),
+    });
+  }
+  return chunks;
+}
+
+async function saveRagIndex(subredditName: string, docs: RagDocument[]): Promise<void> {
+  const chunks = docs.flatMap(chunkDocument).slice(0, 120);
+  await json.set(keyFor(subredditName, 'shared', 'sentinel:rag:index'), {
+    rebuiltAt: now(),
+    count: chunks.length,
+    docs: chunks,
+  });
+}
+
+async function readRagIndex(subredditName: string): Promise<{ rebuiltAt: string; count: number; docs: RagDocument[] } | undefined> {
+  return await json.get<{ rebuiltAt: string; count: number; docs: RagDocument[] }>(keyFor(subredditName, 'shared', 'sentinel:rag:index'));
+}
+
+async function getSentinelApiKey(subredditName: string): Promise<string | undefined> {
+  const stored = await redis.get(keyFor(subredditName, 'shared', 'sentinel:groq:key'));
+  return stored || process.env.GROQ_API_KEY || undefined;
+}
+
+async function getSentinelMeta(subredditName: string): Promise<{ lastSuccessAt: string | null; lastLatencyMs: number | null; lastError: string | null }> {
+  return (
+    (await json.get<{ lastSuccessAt: string | null; lastLatencyMs: number | null; lastError: string | null }>(
+      keyFor(subredditName, 'shared', 'sentinel:groq:meta')
+    )) ?? { lastSuccessAt: null, lastLatencyMs: null, lastError: null }
+  );
+}
+
+async function setSentinelMeta(
+  subredditName: string,
+  meta: { lastSuccessAt?: string | null; lastLatencyMs?: number | null; lastError?: string | null }
+): Promise<void> {
+  const current = await getSentinelMeta(subredditName);
+  await json.set(keyFor(subredditName, 'shared', 'sentinel:groq:meta'), { ...current, ...meta });
+}
+
+function groqFailureCauseForStatus(status: number, text: string): string {
+  if (status === 401 || status === 403) return 'invalid API key';
+  if (status === 404 || /model/i.test(text)) return 'unsupported model';
+  if (status === 429) return 'rate limit';
+  if (status >= 500) return 'Groq service error';
+  return `Groq returned HTTP ${status}`;
+}
+
 async function buildAiCorpus(modContext: ModContextState & { username: string }): Promise<RagDocument[]> {
   await seedIfNeeded(modContext.username, modContext.subredditName);
-  const [settings, queue, templates, audits, tickets, liveQueue] = await Promise.all([
+  const [settings, queue, templates, audits, tickets, scenarios, liveQueue] = await Promise.all([
     getSettings(modContext.subredditName),
     listIndexed<QueueItem>('queue', 'queue'),
     listIndexed<ResponseTemplate>('templates', 'template'),
     listIndexed<AuditEvent>('audit', 'audit'),
     listIndexed<ConsensusTicket>('tickets', 'ticket'),
+    listIndexed<TrainingScenario>('scenarios', 'scenario'),
     fetchLiveQueue(modContext.subredditName),
   ]);
 
@@ -944,7 +1120,7 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
       id: 'settings:current',
       title: `r/${settings.subredditName} workspace settings`,
       type: 'settings',
-      content: `Consensus mode ${settings.consensusThresholdMode}, required fixed votes ${settings.consensusFixedCount}, percent ${settings.consensusPercent}, training level ${settings.trainingRequiredLevel}, high-impact actions ${settings.highImpactActions.join(', ')}, workspace mode ${settings.workspaceMode}.`,
+      content: `Consensus mode ${settings.consensusThresholdMode}, required fixed votes ${settings.consensusFixedCount}, percent ${settings.consensusPercent}, training level ${settings.trainingRequiredLevel}, high-impact actions ${settings.highImpactActions.join(', ')}, workspace mode ${settings.workspaceMode}, ModDesk role ${modContext.modDeskRole}, Reddit permissions ${modContext.modPermissions.join(', ') || 'unknown'}.`,
     },
   ];
 
@@ -958,7 +1134,8 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
       id: `queue:${item.itemId}`,
       title: `${item.severity} ${item.itemType}: ${item.title}`,
       type: 'queue',
-      content: `${item.reportCount} reports. Reasons: ${item.reports.join(', ')}. Suggested rules: ${item.suggestedRuleIds.join(', ')}. Body: ${item.bodyExcerpt}`,
+      content: `${item.reportCount} reports. Reasons: ${item.reports.join(', ')}. Suggested rules: ${item.suggestedRuleIds.join(', ')}. Body: ${settings.workspaceMode === 'training' ? sanitizeForAi(item.bodyExcerpt) : item.bodyExcerpt}`,
+      sourceRef: item.itemId,
     });
   }
 
@@ -989,6 +1166,15 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
     });
   }
 
+  for (const scenario of scenarios.slice(0, 10)) {
+    docs.push({
+      id: `training:${scenario.scenarioId}`,
+      title: `Training case: ${scenario.title}`,
+      type: 'playbook',
+      content: `Expected action ${scenario.expectedAction}, rule ${scenario.expectedRuleId}, difficulty ${scenario.difficulty}. ${scenario.explanation}. Tags: ${scenario.tags.join(', ')}.`,
+    });
+  }
+
   try {
     const subreddit = await reddit.getSubredditByName(modContext.subredditName);
     const rules = await subreddit.getRules();
@@ -1013,6 +1199,57 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
   }
 
   try {
+    const automod = await reddit.getWikiPage(modContext.subredditName, 'config/automod');
+    docs.push({
+      id: 'wiki:config/automod',
+      title: 'Automod wiki config',
+      type: 'settings',
+      content: automod.content.slice(0, 5000),
+      sensitive: true,
+    });
+  } catch {
+    /* automod read depends on wiki permissions */
+  }
+
+  try {
+    const reasons = await reddit.getSubredditRemovalReasons(modContext.subredditName);
+    for (const reason of reasons.slice(0, 12)) {
+      docs.push({
+        id: `removal-reason:${reason.id ?? reason.title}`,
+        title: `Removal reason: ${reason.title ?? 'Untitled'}`,
+        type: 'template',
+        content: reason.message ?? '',
+      });
+    }
+  } catch {
+    /* removal reasons are optional */
+  }
+
+  if (settings.workspaceMode === 'live' && hasRedditPermission(modContext, 'mail')) {
+    try {
+      const conversations = await reddit.modMail.getConversations({
+        subreddits: [modContext.subredditName],
+        state: 'all',
+        limit: 6,
+      });
+      for (const conversation of Object.values(conversations.conversations)) {
+        docs.push({
+          id: `modmail:${conversation.id}`,
+          title: `Modmail: ${conversation.subject || 'No subject'}`,
+          type: 'handoff',
+          content: Object.values(conversation.messages)
+            .slice(-4)
+            .map((message) => `${message.author?.name || 'system'}: ${message.bodyMarkdown || message.body || ''}`)
+            .join('\n'),
+          sensitive: true,
+        });
+      }
+    } catch {
+      /* modmail context is optional and permission-gated */
+    }
+  }
+
+  try {
     const logs = await reddit.getModerationLog({ subredditName: modContext.subredditName, limit: 8 }).all();
     for (const log of logs) {
       docs.push({
@@ -1023,7 +1260,7 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
       });
     }
   } catch {
-    /* live modlog is optional in the RAG corpus */
+    /* live modlog is optional in the workspace context corpus */
   }
 
   try {
@@ -1054,7 +1291,11 @@ async function buildAiCorpus(modContext: ModContextState & { username: string })
     /* handoff context is optional */
   }
 
-  return docs;
+  const visibleDocs = settings.workspaceMode === 'training'
+    ? docs.map((doc) => ({ ...doc, content: sanitizeForAi(doc.content) }))
+    : docs;
+  await saveRagIndex(modContext.subredditName, visibleDocs);
+  return visibleDocs.flatMap(chunkDocument);
 }
 
 function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], modContext: ModContextState): string {
@@ -1066,12 +1307,16 @@ function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], mod
     .join('\n');
   return [
     'You are Sentinel, the ModDesk OS AI assistant for Reddit moderators.',
-    'Use only the supplied RAG context plus general moderation reasoning. Be concrete, calm, and launch-ready.',
+    'Behave like a high-quality ChatGPT-style assistant built specifically for Reddit moderator teams. Be conversational, useful, and concrete.',
+    'Use supplied ModDesk workspace context when it helps, but do not sound like a retrieval system. If context is missing, say what you need or answer generally.',
+    'If the user says hi, introduce yourself as a Reddit moderation operations assistant, not a generic chatbot.',
     'Never claim you performed a Reddit action. For bans, removals, locks, mutes, automod edits, or public replies, recommend the next step and name the evidence needed.',
-    'When suggesting policy or Automod changes, include a short rationale and a review checklist. Prefer time-saving workflows that match Devvit mod-tool hackathon judging: impact, polish, reliable UX, and ecosystem value.',
-    `Current community: r/${modContext.subredditName}. Usernames and links may be sanitized before leaving Reddit.`,
+    'When suggesting policy or Automod changes, include a short rationale, risk level, permission requirement, and review checklist.',
+    'Always include these sections: Answer, Reasoning summary, Recommended action, Risk level, Related rule/policy, Confidence, Source references, Mode boundary, Next safe step.',
+    'You may propose task drafts only. Never execute destructive live Reddit actions from chat.',
+    `Current community: r/${modContext.subredditName}. ModDesk role: ${modContext.modDeskRole}. Usernames and links may be sanitized before leaving Reddit.`,
     '',
-    'RAG CONTEXT:',
+    'MODDESK WORKSPACE CONTEXT:',
     contextBlock || 'No matching context found. Ask for the missing detail and avoid guessing.',
     '',
     'RECENT CHAT:',
@@ -1079,30 +1324,114 @@ function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], mod
     '',
     `MODERATOR QUESTION: ${sanitizeForAi(request.prompt)}`,
     '',
-    'Answer in a ChatGPT-like style with concise sections. Include a Sources line naming the relevant RAG source titles.',
+    'Answer like a polished AI assistant with concise sections. Include a Sources line naming relevant ModDesk context titles, or say "Sources: general moderation guidance" when no context was used.',
   ].join('\n');
 }
 
-function buildFallbackReply(request: AiChatRequest, sources: AiContextSource[]): string {
-  return buildStructuredFallbackReply(request, sources);
+function buildSuggestedTasks(prompt: string, settings: AppSettings, modContext: ModContextState): AiChatResponse['suggestedTasks'] {
+  const lower = prompt.toLowerCase();
+  const mode = settings.workspaceMode;
+  const status = mode === 'training' ? 'simulated' : 'draft';
+  const tasks: AiChatResponse['suggestedTasks'] = [];
+  const add = (type: AiChatResponse['suggestedTasks'][number]['type'], title: string, summary: string, permissionRequired?: string) => {
+    if (!settings.sentinelAllowedTools.includes(type) && !settings.sentinelAllowedTools.includes(type.replace(/_/g, '-'))) return;
+    tasks.push({
+      taskId: id('sentinel-task'),
+      type,
+      title,
+      summary,
+      mode,
+      status: permissionRequired && mode === 'live' ? 'live_confirmation_required' : status,
+      permissionRequired,
+    });
+  };
+  if (/modmail|reply|tone/.test(lower)) add('draft_modmail_reply', 'Draft a modmail reply', 'Prepare a calm moderator reply using saved responses and retrieved context.', 'mail');
+  if (/consensus|vote|ticket|escalat/.test(lower)) add('create_consensus_ticket', 'Create a consensus ticket draft', 'Package target, evidence, reason, deadline, and threshold for senior review.');
+  if (/automod|yaml|rule/.test(lower)) add('prepare_automod_patch', 'Prepare Automod patch', 'Draft and explain an Automod YAML change with risk notes.', 'wiki');
+  if (/queue|report|pressure|urgent/.test(lower)) add('summarize_queue', 'Summarize queue pressure', 'Summarize urgent reports, severity, and recommended next actions.');
+  if (/training|trainee|scenario/.test(lower)) add('create_training_case', 'Create training case', 'Convert safe/redacted context into a trainee scenario.');
+  if (/saved response|template|removal reason/.test(lower)) add('create_saved_response', 'Suggest saved response template', 'Draft a reusable response with approved macros.');
+  if (/ban|mute/.test(lower)) add('prepare_ban_recommendation', 'Prepare ban/mute recommendation', 'Draft evidence and permission requirements for senior review.', 'access');
+  if (tasks.length === 0) add('summarize_queue', 'Summarize moderator context', 'Prepare a low-risk summary from available workspace context.');
+  if (!roleCan(modContext.modDeskRole, 'live_write')) {
+    return tasks.map((task) => ({ ...task, status: mode === 'training' ? 'simulated' : 'draft', permissionRequired: task.permissionRequired ? `${task.permissionRequired} (proposal only for ${modContext.modDeskRole})` : undefined }));
+  }
+  return tasks.slice(0, 4);
+}
+
+function inferRisk(prompt: string): Severity {
+  const lower = prompt.toLowerCase();
+  if (/self-harm|suicide|dox|personal info|brigad|ban evasion|permanent ban|automod|wiki/.test(lower)) return 'critical';
+  if (/ban|mute|remove|lock|mass|modmail/.test(lower)) return 'high';
+  if (/queue|report|template|training/.test(lower)) return 'medium';
+  return 'low';
+}
+
+function notConfiguredReply(
+  request: AiChatRequest,
+  sources: AiContextSource[],
+  modContext: ModContextState,
+  settings: AppSettings
+): AiChatResponse {
+  return {
+    reply: 'Sentinel AI is not configured. Owner/admin must add a Groq API key in Settings.',
+    model: 'none',
+    status: 'not_configured',
+    sources,
+    promptPreview: 'Groq key missing; no AI call was made.',
+    reasoningSummary: `No server-side Groq API key is configured for r/${modContext.subredditName}.`,
+    recommendedAction: 'Owner/admin should open Settings > Groq setup, save an API key, choose a model, and test the connection.',
+    riskLevel: inferRisk(request.prompt),
+    relatedPolicy: 'Sentinel AI configuration',
+    confidence: 'high',
+    nextSuggestedAction: 'Configure Groq in Settings and test the connection.',
+    modeLabel: settings.workspaceMode === 'training' ? 'demo-only' : 'live-capable',
+    suggestedTasks: [],
+    errorReason: 'missing API key',
+    modelStatus: {
+      status: 'disabled',
+      provider: 'none',
+      model: settings.sentinelModel,
+      lastError: 'Missing Groq API key.',
+    },
+  };
 }
 
 export async function answerSentinelRequest(
   modContext: ModContextState & { username: string },
   request: AiChatRequest
 ): Promise<AiChatResponse> {
-  const corpus = await buildAiCorpus(modContext);
-  const sources = retrieveContext(request.prompt, corpus);
+  const settings = await getSettings(modContext.subredditName);
+  let sources: AiContextSource[];
+  try {
+    const corpus = settings.sentinelRagEnabled
+      ? await buildAiCorpus(modContext)
+      : [
+          {
+            id: 'playbook:workspace-context-disabled',
+            title: 'Workspace context disabled by owner/admin settings',
+            type: 'playbook' as const,
+            content: 'Owner/admin disabled Sentinel workspace context. Answers should behave like a direct Groq assistant and avoid claiming retrieved live context.',
+          },
+        ];
+    sources = retrieveContext(request.prompt, corpus);
+  } catch (error) {
+    await setSentinelMeta(modContext.subredditName, {
+      lastError: `Workspace context retrieval failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+    });
+    sources = [];
+  }
+
   const augmentedPrompt = composeAiPrompt(request, sources, modContext);
   const promptPreview = augmentedPrompt.slice(0, 900);
   const startedAt = Date.now();
 
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = await getSentinelApiKey(modContext.subredditName);
   if (groqKey) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/responses', {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         signal: controller.signal,
         headers: {
@@ -1111,95 +1440,125 @@ export async function answerSentinelRequest(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'openai/gpt-oss-20b',
-          input: augmentedPrompt,
+          model: settings.sentinelModel || GROQ_MODEL,
+          messages: [
+            { role: 'system', content: `You are Sentinel, a Reddit moderation operations assistant. If the user greets you, introduce yourself with: "I'm Sentinel, your Reddit moderation assistant. I can help triage reports, explain subreddit rules, draft modmail replies, summarize queue pressure, generate training cases, review Automod changes, and prepare consensus tickets." Return structured, cited moderation help.` },
+            { role: 'user', content: augmentedPrompt },
+          ],
+          temperature: settings.sentinelTemperature,
+          max_tokens: settings.sentinelMaxTokens,
         }),
       });
       clearTimeout(timeout);
       if (!response.ok) {
         const text = await response.text().catch(() => '');
+        const reason = `${groqFailureCauseForStatus(response.status, text)}${text ? `: ${text.slice(0, 180)}` : ''}`;
+        await setSentinelMeta(modContext.subredditName, { lastError: reason });
         return {
-          reply: buildFallbackReply(request, sources),
-          model: 'Local RAG fallback',
-          status: 'fallback',
+          reply: `Sentinel AI could not reach Groq.\n\nCause: ${reason}\nRecovery action: Owner/admin should verify the Groq API key, selected model, and Devvit HTTP domain permissions, then use Test Groq Connection.`,
+          model: settings.sentinelModel,
+          status: 'error',
           sources,
           promptPreview,
+          reasoningSummary: reason,
+          recommendedAction: 'Fix Groq settings before using Sentinel AI.',
+          riskLevel: inferRisk(request.prompt),
+          relatedPolicy: sources[0]?.title ?? 'Sentinel AI configuration',
+          confidence: 'high',
+          nextSuggestedAction: 'Open Settings > Groq setup and test connection.',
+          modeLabel: settings.workspaceMode === 'training' ? 'demo-only' : 'live-capable',
+          suggestedTasks: [],
+          errorReason: reason,
           modelStatus: {
-            status: response.status === 429 ? 'error' : 'fallback',
-            provider: 'local',
-            model: 'local-rag',
+            status: response.status === 429 ? 'error' : 'error',
+            provider: 'groq',
+            model: settings.sentinelModel,
             latencyMs: Date.now() - startedAt,
-            lastError: `Groq returned ${response.status}${text ? `: ${text.slice(0, 140)}` : ''}`,
+            lastError: reason,
           },
         };
       }
       const payload = await response.json().catch(() => undefined);
       const reply = extractGroqText(payload);
       if (reply) {
+        const latencyMs = Date.now() - startedAt;
+        await setSentinelMeta(modContext.subredditName, { lastSuccessAt: now(), lastLatencyMs: latencyMs, lastError: null });
         return {
           reply,
-          model: 'openai/gpt-oss-20b',
+          model: settings.sentinelModel,
           status: 'success',
           sources,
           promptPreview,
+          reasoningSummary: sources.length > 0 ? 'Groq answered with ModDesk workspace context.' : 'Groq answered without retrieved workspace context.',
+          recommendedAction: 'Review the suggested action and use the appropriate ModDesk module to continue.',
+          riskLevel: inferRisk(request.prompt),
+          relatedPolicy: sources[0]?.title ?? 'Retrieved moderation context',
+          confidence: sources.length > 0 ? 'high' : 'medium',
+          nextSuggestedAction: 'Use a suggested task button or open the relevant module.',
+          modeLabel: settings.workspaceMode === 'training' ? 'demo-only' : 'live-capable',
+          suggestedTasks: buildSuggestedTasks(request.prompt, settings, modContext),
           modelStatus: {
             status: 'connected',
             provider: 'groq',
-            model: 'openai/gpt-oss-20b',
-            latencyMs: Date.now() - startedAt,
+            model: settings.sentinelModel,
+            latencyMs,
           },
         };
       }
+      const reason = 'malformed response: Groq returned an empty or unsupported response shape';
+      await setSentinelMeta(modContext.subredditName, { lastError: reason });
       return {
-        reply: buildFallbackReply(request, sources),
-        model: 'Local RAG fallback',
-        status: 'fallback',
+        reply: `Sentinel AI could not parse Groq's response.\n\nCause: ${reason}\nRecovery action: Try Test Groq Connection or choose a supported chat-completions model.`,
+        model: settings.sentinelModel,
+        status: 'error',
         sources,
         promptPreview,
-        modelStatus: {
-          status: 'fallback',
-          provider: 'local',
-          model: 'local-rag',
-          latencyMs: Date.now() - startedAt,
-          lastError: 'Groq returned an empty or unsupported response shape.',
-        },
+        reasoningSummary: reason,
+        recommendedAction: 'Fix Groq model/response settings.',
+        riskLevel: inferRisk(request.prompt),
+        relatedPolicy: 'Sentinel AI configuration',
+        confidence: 'low',
+        nextSuggestedAction: 'Owner/admin should test Groq connection.',
+        modeLabel: settings.workspaceMode === 'training' ? 'demo-only' : 'live-capable',
+        suggestedTasks: [],
+        errorReason: reason,
+        modelStatus: { status: 'error', provider: 'groq', model: settings.sentinelModel, latencyMs: Date.now() - startedAt, lastError: reason },
       };
     } catch (error) {
       clearTimeout(timeout);
       const isTimeout = error instanceof Error && error.name === 'AbortError';
-      console.warn('Sentinel AI Groq upstream unavailable; using local RAG fallback.', error);
+      const reason = isTimeout ? 'Groq timeout' : `network error: ${error instanceof Error ? error.message : 'Groq request failed'}`;
+      console.warn('Sentinel AI Groq upstream unavailable.', error);
+      await setSentinelMeta(modContext.subredditName, { lastError: reason });
       return {
-        reply: buildFallbackReply(request, sources),
-        model: 'Local RAG fallback',
-        status: 'fallback',
+        reply: `Sentinel AI could not reach Groq.\n\nCause: ${reason}\nRecovery action: Check Devvit HTTP domain permissions for api.groq.com, Groq status, API key, and selected model.`,
+        model: settings.sentinelModel,
+        status: 'error',
         sources,
         promptPreview,
+        reasoningSummary: reason,
+        recommendedAction: 'Retry after fixing Groq connectivity.',
+        riskLevel: inferRisk(request.prompt),
+        relatedPolicy: 'Sentinel AI configuration',
+        confidence: 'low',
+        nextSuggestedAction: 'Run Test Groq Connection in Settings.',
+        modeLabel: settings.workspaceMode === 'training' ? 'demo-only' : 'live-capable',
+        suggestedTasks: [],
+        errorReason: reason,
         modelStatus: {
-          status: isTimeout ? 'timeout' : 'fallback',
-          provider: 'local',
-          model: 'local-rag',
+          status: isTimeout ? 'timeout' : 'error',
+          provider: 'groq',
+          model: settings.sentinelModel,
           latencyMs: Date.now() - startedAt,
-          lastError: isTimeout ? 'Groq request timed out.' : 'Groq request failed.',
+          lastError: reason,
         },
       };
     }
   }
 
-  console.warn('GROQ_API_KEY is not configured; using local RAG fallback.');
-  return {
-    reply: buildFallbackReply(request, sources),
-    model: 'Local RAG fallback',
-    status: 'fallback',
-    sources,
-    promptPreview,
-    modelStatus: {
-      status: 'disabled',
-      provider: 'local',
-      model: 'local-rag',
-      latencyMs: Date.now() - startedAt,
-      lastError: 'No Groq API key is configured.',
-    },
-  };
+  const reason = 'missing API key';
+  await setSentinelMeta(modContext.subredditName, { lastError: reason });
+  return notConfiguredReply(request, sources, modContext, settings);
 }
 
 function detectCrisisSignals(item: QueueItem): CrisisSignal[] {
@@ -1359,7 +1718,7 @@ async function buildComposerDraft(modContext: ModContextState & { username: stri
     matchedTemplates,
     removalReasons: reasons.slice(0, 5),
     shouldUseConsensus: riskLevel === 'critical' || riskLevel === 'high' || input.actionIntent === 'create_consensus',
-    sentinelPrompt: `Improve this moderator ${input.actionIntent} draft using the available RAG context: ${contextText}`,
+    sentinelPrompt: `Improve this moderator ${input.actionIntent} draft using the available workspace context: ${contextText}`,
   };
 }
 
@@ -1506,10 +1865,16 @@ async function listIndexed<T>(indexName: string, itemKey: string): Promise<T[]> 
 }
 
 async function audit(actor: string, event: Omit<AuditEvent, 'eventId' | 'actor' | 'createdAt'>): Promise<AuditEvent> {
+  const modContext = await getModContext().catch(() => undefined);
+  const settings = await getSettings(modContext?.subredditName ?? currentSubredditName()).catch(() => undefined);
   const auditEvent: AuditEvent = {
     eventId: id('audit'),
     actor,
     createdAt: now(),
+    actorRole: event.actorRole ?? modContext?.modDeskRole,
+    mode: event.mode ?? settings?.workspaceMode,
+    subreddit: event.subreddit ?? modContext?.subredditName ?? currentSubredditName(),
+    result: event.result ?? 'success',
     ...event,
   };
   await putIndexed('audit', 'audit', auditEvent.eventId, auditEvent);
@@ -1520,7 +1885,25 @@ async function audit(actor: string, event: Omit<AuditEvent, 'eventId' | 'actor' 
 
 async function getSettings(subredditName: string): Promise<AppSettings> {
   const existing = await json.get<AppSettings>(key('settings'));
-  if (existing) return existing;
+  if (existing) {
+    const migrated: AppSettings = {
+      ...existing,
+      liveWritesEnabled: existing.liveWritesEnabled ?? false,
+      liveModeEnabledBy: existing.liveModeEnabledBy ?? null,
+      liveModeEnabledAt: existing.liveModeEnabledAt ?? null,
+      auditRetentionDays: existing.auditRetentionDays ?? 180,
+      workspaceMode: existing.workspaceMode ?? 'training',
+      wallpaperId: existing.wallpaperId ?? 'wall1',
+      sentinelModel: existing.sentinelModel ?? GROQ_MODEL,
+      sentinelTemperature: existing.sentinelTemperature ?? 0.2,
+      sentinelMaxTokens: existing.sentinelMaxTokens ?? 900,
+      sentinelRagEnabled: existing.sentinelRagEnabled ?? true,
+      sentinelAllowedTools: existing.sentinelAllowedTools ?? DEFAULT_SENTINEL_TOOLS,
+      sentinelAutomationEnabled: existing.sentinelAutomationEnabled ?? false,
+    };
+    if (JSON.stringify(migrated) !== JSON.stringify(existing)) await json.set(key('settings'), migrated);
+    return migrated;
+  }
   const settings = defaultSettings(subredditName);
   await json.set(key('settings'), settings);
   return settings;
@@ -1676,17 +2059,161 @@ api.post('/ai/chat', async (c) => {
 });
 
 api.get('/ai/status', async (c) => {
-  await requireModerator();
-  const hasKey = Boolean(process.env.GROQ_API_KEY);
+  const modContext = await requireModerator();
+  const settings = await getSettings(modContext.subredditName);
+  const hasKey = Boolean(await getSentinelApiKey(modContext.subredditName));
+  const meta = await getSentinelMeta(modContext.subredditName);
   return c.json({
     status: hasKey ? 'connected' : 'disabled',
-    provider: hasKey ? 'groq' : 'local',
-    model: hasKey ? 'openai/gpt-oss-20b' : 'local-rag',
-    fallbackAvailable: true,
+    provider: hasKey ? 'groq' : 'none',
+    model: settings.sentinelModel,
+    ragEnabled: settings.sentinelRagEnabled,
+    lastSuccessAt: meta.lastSuccessAt,
+    lastLatencyMs: meta.lastLatencyMs,
+    lastError: meta.lastError,
     detail: hasKey
-      ? 'Groq key is configured. Sentinel will fall back safely if the upstream model fails.'
-      : 'Groq is not configured. Sentinel will use deterministic local RAG fallback.',
+      ? 'Groq key is configured server-side. Use Test Groq Connection to verify the selected model.'
+      : 'Sentinel AI is not configured. Owner/admin must add a Groq API key in Settings.',
   });
+});
+
+api.get('/ai/settings', async (c) => {
+  const modContext = await requireRole('settings');
+  const settings = await getSettings(modContext.subredditName);
+  const meta = await getSentinelMeta(modContext.subredditName);
+  const storedKey = await redis.get(keyFor(modContext.subredditName, 'shared', 'sentinel:groq:key'));
+  return c.json({
+    hasApiKey: Boolean(storedKey || process.env.GROQ_API_KEY),
+    model: settings.sentinelModel,
+    envModel: process.env.GROQ_MODEL ?? null,
+    temperature: settings.sentinelTemperature,
+    maxTokens: settings.sentinelMaxTokens,
+    ragEnabled: settings.sentinelRagEnabled,
+    allowedTools: settings.sentinelAllowedTools,
+    automationEnabled: settings.sentinelAutomationEnabled,
+    lastSuccessAt: meta.lastSuccessAt,
+    lastLatencyMs: meta.lastLatencyMs,
+    lastError: meta.lastError,
+  });
+});
+
+api.post('/ai/settings', async (c) => {
+  const modContext = await requireRole('settings');
+  const input = await c.req.json<UpdateSentinelSettingsRequest>();
+  const before = await getSettings(modContext.subredditName);
+  if (input.clearApiKey) {
+    await redis.del(keyFor(modContext.subredditName, 'shared', 'sentinel:groq:key'));
+  } else if (typeof input.apiKey === 'string' && input.apiKey.trim()) {
+    await redis.set(keyFor(modContext.subredditName, 'shared', 'sentinel:groq:key'), input.apiKey.trim());
+  }
+  const after: AppSettings = {
+    ...before,
+    sentinelModel: input.model?.trim() || before.sentinelModel,
+    sentinelTemperature: Math.max(0, Math.min(1, input.temperature ?? before.sentinelTemperature)),
+    sentinelMaxTokens: Math.max(256, Math.min(4096, input.maxTokens ?? before.sentinelMaxTokens)),
+    sentinelRagEnabled: input.ragEnabled ?? before.sentinelRagEnabled,
+    sentinelAllowedTools: input.allowedTools?.length ? input.allowedTools : before.sentinelAllowedTools,
+    sentinelAutomationEnabled: input.automationEnabled ?? before.sentinelAutomationEnabled,
+  };
+  await json.set(key('settings'), after);
+  await audit(modContext.username, {
+    eventType: 'sentinel.settings.updated',
+    entityType: 'settings',
+    entityId: 'sentinel',
+    summary: `Updated Sentinel AI settings. API key ${input.apiKey ? 'saved server-side' : input.clearApiKey ? 'cleared' : 'unchanged'}.`,
+    sourceModule: 'sentinel',
+    before: { ...before, apiKey: before ? '[not exposed]' : undefined },
+    after: { ...after, apiKey: input.apiKey ? '[saved server-side]' : '[not exposed]' },
+  });
+  return c.json(await (async () => {
+    const meta = await getSentinelMeta(modContext.subredditName);
+    return {
+      hasApiKey: Boolean(await getSentinelApiKey(modContext.subredditName)),
+      model: after.sentinelModel,
+      envModel: process.env.GROQ_MODEL ?? null,
+      temperature: after.sentinelTemperature,
+      maxTokens: after.sentinelMaxTokens,
+      ragEnabled: after.sentinelRagEnabled,
+      allowedTools: after.sentinelAllowedTools,
+      automationEnabled: after.sentinelAutomationEnabled,
+      lastSuccessAt: meta.lastSuccessAt,
+      lastLatencyMs: meta.lastLatencyMs,
+      lastError: meta.lastError,
+    };
+  })());
+});
+
+api.post('/ai/test', async (c) => {
+  const modContext = await requireRole('settings');
+  const settings = await getSettings(modContext.subredditName);
+  const apiKey = await getSentinelApiKey(modContext.subredditName);
+  const startedAt = Date.now();
+  if (!apiKey) {
+    return c.json<TestGroqResponse>({
+      ok: false,
+      status: 'disabled',
+      model: settings.sentinelModel,
+      latencyMs: null,
+      message: 'Sentinel AI is not configured. Owner/admin must add a Groq API key in Settings.',
+    });
+  }
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: settings.sentinelModel,
+        messages: [{ role: 'user', content: 'Reply with exactly: ModDesk Sentinel Groq test ok.' }],
+        temperature: 0,
+        max_tokens: 32,
+      }),
+    });
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      const message = `${groqFailureCauseForStatus(response.status, text)}${text ? `: ${text.slice(0, 160)}` : ''}`;
+      await setSentinelMeta(modContext.subredditName, { lastError: message });
+      return c.json<TestGroqResponse>({ ok: false, status: 'error', model: settings.sentinelModel, latencyMs, message }, 200);
+    }
+    const payload = await response.json().catch(() => undefined);
+    const reply = extractGroqText(payload);
+    if (!reply) {
+      const message = 'malformed response: Groq returned no chat completion text';
+      await setSentinelMeta(modContext.subredditName, { lastError: message });
+      return c.json<TestGroqResponse>({ ok: false, status: 'error', model: settings.sentinelModel, latencyMs, message }, 200);
+    }
+    await setSentinelMeta(modContext.subredditName, { lastSuccessAt: now(), lastLatencyMs: latencyMs, lastError: null });
+    await audit(modContext.username, {
+      eventType: 'sentinel.groq.tested',
+      entityType: 'settings',
+      entityId: 'sentinel',
+      summary: `Tested Groq model ${settings.sentinelModel} successfully in ${latencyMs}ms.`,
+      sourceModule: 'sentinel',
+    });
+    return c.json<TestGroqResponse>({ ok: true, status: 'connected', model: settings.sentinelModel, latencyMs, message: 'Groq connection succeeded.' });
+  } catch (error) {
+    const message = `network error: ${error instanceof Error ? error.message : 'Groq request failed'}`;
+    await setSentinelMeta(modContext.subredditName, { lastError: message });
+    return c.json<TestGroqResponse>({ ok: false, status: 'error', model: settings.sentinelModel, latencyMs: Date.now() - startedAt, message }, 200);
+  }
+});
+
+api.post('/ai/rag/rebuild', async (c) => {
+  const modContext = await requireRole('settings');
+  const docs = await buildAiCorpus(modContext);
+  const index = await readRagIndex(modContext.subredditName);
+  await audit(modContext.username, {
+    eventType: 'sentinel.context.rebuilt',
+    entityType: 'workspace_context',
+    entityId: 'sentinel',
+    summary: `Refreshed Sentinel workspace context with ${index?.count ?? docs.length} chunks.`,
+    sourceModule: 'sentinel',
+  });
+  return c.json({ ok: true, rebuiltAt: index?.rebuiltAt ?? now(), count: index?.count ?? docs.length });
 });
 
 api.get('/radar', async (c) => {
@@ -1746,15 +2273,19 @@ api.post('/handoff', async (c) => {
 });
 
 api.post('/settings', async (c) => {
-  const modContext = await requireModerator();
+  const modContext = await requireRole('settings');
   const update = await c.req.json<UpdateSettingsRequest>();
   const before = await getSettings(modContext.subredditName);
+  const enablingLiveWrites = update.liveWritesEnabled === true && !before.liveWritesEnabled;
   const after: AppSettings = {
     ...before,
     ...update,
     consensusFixedCount: Math.max(1, Math.min(12, update.consensusFixedCount ?? before.consensusFixedCount)),
     consensusPercent: Math.max(51, Math.min(100, update.consensusPercent ?? before.consensusPercent)),
     trainingRequiredLevel: Math.max(1, Math.min(12, update.trainingRequiredLevel ?? before.trainingRequiredLevel)),
+    auditRetentionDays: Math.max(30, Math.min(3650, update.auditRetentionDays ?? before.auditRetentionDays)),
+    liveModeEnabledBy: enablingLiveWrites ? modContext.username : before.liveModeEnabledBy,
+    liveModeEnabledAt: enablingLiveWrites ? now() : before.liveModeEnabledAt,
   };
   await json.set(key('settings'), after);
   await audit(modContext.username, {
@@ -2020,13 +2551,45 @@ api.post('/templates/:templateId/archive', async (c) => {
 api.post('/queue/action', async (c) => {
   const modContext = await requireModerator();
   const input = await c.req.json<QueueActionRequest>();
+  const settings = await getSettings(modContext.subredditName);
 
   if (input.itemId.startsWith('live:')) {
     const realId = input.itemId.replace('live:', '');
     const thingId = asRedditThingId(realId);
+    if (settings.workspaceMode !== 'live') {
+      const simulated: QueueItem = {
+        itemId: input.itemId,
+        itemType: thingId?.startsWith('t1_') ? 'comment' : 'post',
+        title: 'Simulated Reddit Content Action',
+        bodyExcerpt: 'Demo / Training Mode simulated this action. Reddit was not modified.',
+        author: 'redacted-user',
+        reports: [],
+        reportCount: 0,
+        ageSeconds: 0,
+        severityScore: 0,
+        severity: 'low',
+        suggestedRuleIds: [],
+        status: input.action === 'escalate' ? 'consensus_required' : 'cleared',
+        reviewedBy: modContext.username,
+        reviewedAt: now(),
+        outcome: `simulated:${input.action}`,
+        note: input.note,
+      };
+      await json.set(key(`queue-sim:${id('action')}`, 'demo'), simulated);
+      await audit(modContext.username, {
+        eventType: `demo.queue.${input.action}`,
+        entityType: thingId?.startsWith('t1_') ? 'comment' : 'post',
+        entityId: realId,
+        summary: `Simulated ${input.action} for live-derived training item ${realId}. Reddit was not modified.`,
+        sourceModule: 'queue',
+        result: 'simulated',
+        after: simulated,
+      });
+      return c.json(simulated);
+    }
     try {
       if (input.action === 'approve') {
-        requireLiveConfirmation(input.confirmation);
+        await requireLiveWrite(modContext, input.confirmation, 'posts');
         if (!thingId) throw new AuthError('REDDIT_API_UNAVAILABLE', 'Live queue item ID is not a supported post/comment ID.', 503);
         await reddit.approve(thingId);
         await audit(modContext.username, {
@@ -2034,9 +2597,11 @@ api.post('/queue/action', async (c) => {
           entityType: thingId.startsWith('t1_') ? 'comment' : 'post',
           entityId: realId,
           summary: `Approved live item ${realId} on r/${modContext.subredditName}`,
+          sourceModule: 'queue',
+          redditResponse: 'reddit.approve completed',
         });
       } else if (input.action === 'remove') {
-        requireLiveConfirmation(input.confirmation);
+        await requireLiveWrite(modContext, input.confirmation, 'posts');
         if (!thingId) throw new AuthError('REDDIT_API_UNAVAILABLE', 'Live queue item ID is not a supported post/comment ID.', 503);
         await reddit.remove(thingId, false);
         await audit(modContext.username, {
@@ -2044,6 +2609,8 @@ api.post('/queue/action', async (c) => {
           entityType: thingId.startsWith('t1_') ? 'comment' : 'post',
           entityId: realId,
           summary: `Removed live item ${realId} on r/${modContext.subredditName}`,
+          sourceModule: 'queue',
+          redditResponse: 'reddit.remove completed',
         });
       } else if (input.action === 'escalate') {
         const ticketInput: CreateTicketRequest = {
@@ -2188,6 +2755,11 @@ api.post('/queue/action', async (c) => {
 
 api.get('/wiki/automod', async (c) => {
   const modContext = await requireModerator();
+  const settings = await getSettings(modContext.subredditName);
+  if (settings.workspaceMode !== 'live') {
+    const sandbox = await json.get<{ content: string }>(key('wiki:automod', 'demo'));
+    if (sandbox?.content) return c.json({ content: sandbox.content, mode: 'demo' });
+  }
   try {
     const wikiPage = await reddit.getWikiPage(modContext.subredditName, 'config/automod');
     return c.json({ content: wikiPage.content });
@@ -2224,8 +2796,26 @@ action_reason: "Potential toxicity warning triggers"
 
 api.post('/wiki/automod', async (c) => {
   const modContext = await requireModerator();
-  const { content, reason } = await c.req.json<{ content: string; reason: string }>();
+  const { content, reason, confirmation } = await c.req.json<{ content: string; reason: string; confirmation?: 'CONFIRM_LIVE_ACTION' }>();
+  const settings = await getSettings(modContext.subredditName);
+  if (settings.workspaceMode !== 'live') {
+    const before = await json.get<{ content: string; updatedAt: string }>(key('wiki:automod', 'demo'));
+    const after = { content, updatedAt: now(), reason: reason || 'Demo / Training Mode Automod sandbox save' };
+    await json.set(key('wiki:automod', 'demo'), after);
+    await audit(modContext.username, {
+      eventType: 'demo.automod.saved',
+      entityType: 'wiki',
+      entityId: 'config/automod',
+      summary: 'Simulated Automod save in Demo / Training Mode. Reddit wiki was not modified.',
+      sourceModule: 'automod',
+      result: 'simulated',
+      before,
+      after,
+    });
+    return c.json({ success: true, mode: 'demo' });
+  }
   try {
+    await requireLiveWrite(modContext, confirmation, 'wiki');
     await reddit.updateWikiPage({
       subredditName: modContext.subredditName,
       page: 'config/automod',
@@ -2237,6 +2827,8 @@ api.post('/wiki/automod', async (c) => {
       entityType: 'wiki',
       entityId: 'config/automod',
       summary: `Updated Automod YAML ruleset. Reason: ${reason || 'ModyOS Editor Commit'}`,
+      sourceModule: 'automod',
+      redditResponse: 'reddit.updateWikiPage completed',
     });
     return c.json({ success: true });
   } catch (err: any) {
@@ -2378,7 +2970,20 @@ api.post('/live/users/action', async (c) => {
 
   const subredditName = modContext.subredditName;
   try {
-    requireLiveConfirmation(confirmation);
+    const settings = await getSettings(subredditName);
+    if (settings.workspaceMode !== 'live') {
+      await json.set(key(`user-sim:${id('action')}`, 'demo'), { type, username, action, duration, reason, note, createdAt: now() });
+      await audit(modContext.username, {
+        eventType: `demo.user.${type}.${action}`,
+        entityType: 'user',
+        entityId: username,
+        summary: `Simulated ${action} for ${type} user u/${username}. Reddit was not modified.`,
+        sourceModule: 'users',
+        result: 'simulated',
+      });
+      return c.json({ success: true, mode: 'demo' });
+    }
+    await requireLiveWrite(modContext, confirmation, 'access');
     if (type === 'banned') {
       if (action === 'add') {
         await reddit.banUser({
@@ -2583,23 +3188,35 @@ api.get('/live/modmail', async (c) => {
 
 api.post('/live/modmail/reply', async (c) => {
   const modContext = await requireModerator();
-  const { threadId, body, isInternal } = await c.req.json<{
+  const { threadId, body, isInternal, confirmation } = await c.req.json<{
     threadId: string;
     body: string;
     isInternal?: boolean;
+    confirmation?: 'CONFIRM_LIVE_ACTION';
   }>();
+  const settings = await getSettings(modContext.subredditName);
 
   try {
-    if (!threadId.startsWith('demo-')) {
+    if (settings.workspaceMode === 'live' && !threadId.startsWith('demo-')) {
+      await requireLiveWrite(modContext, confirmation, 'mail');
       try {
         await reddit.modMail.reply({
           conversationId: threadId,
           body,
           isInternal: !!isInternal
         });
+        await audit(modContext.username, {
+          eventType: isInternal ? 'live.modmail.note' : 'live.modmail.reply',
+          entityType: 'modmail',
+          entityId: threadId,
+          summary: `${isInternal ? 'Added internal note' : 'Replied'} to live modmail conversation.`,
+          sourceModule: 'modmail',
+          redditResponse: 'reddit.modMail.reply completed',
+        });
         return c.json({ success: true });
       } catch (err) {
-        console.warn('Failed to reply to live modmail, attempting simulation fallback', err);
+        console.warn('Failed to reply to live modmail', err);
+        throw err;
       }
     }
 
@@ -2619,12 +3236,28 @@ api.post('/live/modmail/reply', async (c) => {
       await json.set(mockKey, cached);
 
       await audit(modContext.username, {
-        eventType: isInternal ? 'modmail.note' : 'modmail.reply',
+        eventType: isInternal ? 'demo.modmail.note' : 'demo.modmail.reply',
         entityType: 'modmail',
         entityId: threadId,
-        summary: `${isInternal ? 'Added private note' : 'Replied'} to u/${thread.user} in modmail: "${body.slice(0, 40)}..."`,
+        summary: `${isInternal ? 'Simulated private note' : 'Simulated reply'} to u/${thread.user} in modmail: "${body.slice(0, 40)}..."`,
+        sourceModule: 'modmail',
+        result: 'simulated',
       });
       return c.json({ success: true, thread });
+    }
+    if (settings.workspaceMode !== 'live') {
+      const simulated = { id: id('msg'), threadId, author: modContext.username, body, isInternal: !!isInternal, date: now() };
+      await json.set(key(`modmail-sim:${simulated.id}`, 'demo'), simulated);
+      await audit(modContext.username, {
+        eventType: isInternal ? 'demo.modmail.note' : 'demo.modmail.reply',
+        entityType: 'modmail',
+        entityId: threadId,
+        summary: 'Simulated modmail message for a live-derived training conversation. Reddit was not modified.',
+        sourceModule: 'modmail',
+        result: 'simulated',
+        after: simulated,
+      });
+      return c.json({ success: true, thread: simulated });
     }
     return c.json({ success: false, error: 'Modmail thread not found.' }, 404);
   } catch (err: any) {
@@ -2635,22 +3268,34 @@ api.post('/live/modmail/reply', async (c) => {
 
 api.post('/live/modmail/action', async (c) => {
   const modContext = await requireModerator();
-  const { threadId, action } = await c.req.json<{
+  const { threadId, action, confirmation } = await c.req.json<{
     threadId: string;
     action: 'archive' | 'unarchive' | 'highlight' | 'delete';
+    confirmation?: 'CONFIRM_LIVE_ACTION';
   }>();
+  const settings = await getSettings(modContext.subredditName);
 
   try {
-    if (!threadId.startsWith('demo-')) {
+    if (settings.workspaceMode === 'live' && !threadId.startsWith('demo-')) {
+      await requireLiveWrite(modContext, confirmation, 'mail');
       try {
         if (action === 'archive') {
           await reddit.modMail.archiveConversation(threadId);
         } else if (action === 'unarchive') {
           await reddit.modMail.unarchiveConversation(threadId);
         }
+        await audit(modContext.username, {
+          eventType: `live.modmail.${action}`,
+          entityType: 'modmail',
+          entityId: threadId,
+          summary: `${action.toUpperCase()} live modmail conversation.`,
+          sourceModule: 'modmail',
+          redditResponse: `reddit.modMail.${action} completed`,
+        });
         return c.json({ success: true });
       } catch (err) {
-        console.warn('Failed live modmail action, falling back to mock', err);
+        console.warn('Failed live modmail action', err);
+        throw err;
       }
     }
 
@@ -2669,12 +3314,26 @@ api.post('/live/modmail/action', async (c) => {
       await json.set(mockKey, cached);
 
       await audit(modContext.username, {
-        eventType: `modmail.${action}`,
+        eventType: `demo.modmail.${action}`,
         entityType: 'modmail',
         entityId: threadId,
-        summary: `${action.toUpperCase()} modmail conversation with u/${thread.user}`,
+        summary: `Simulated ${action.toUpperCase()} modmail conversation with u/${thread.user}`,
+        sourceModule: 'modmail',
+        result: 'simulated',
       });
       return c.json({ success: true });
+    }
+    if (settings.workspaceMode !== 'live') {
+      await json.set(key(`modmail-action-sim:${id('action')}`, 'demo'), { threadId, action, createdAt: now() });
+      await audit(modContext.username, {
+        eventType: `demo.modmail.${action}`,
+        entityType: 'modmail',
+        entityId: threadId,
+        summary: `Simulated ${action} for live-derived modmail. Reddit was not modified.`,
+        sourceModule: 'modmail',
+        result: 'simulated',
+      });
+      return c.json({ success: true, mode: 'demo' });
     }
     return c.json({ success: false, error: 'Thread not found.' }, 404);
   } catch (err: any) {

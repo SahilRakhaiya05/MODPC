@@ -64,6 +64,33 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete, subredditNam
           </div>
         </header>
 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          border: '2px solid var(--line)',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          backgroundColor: '#fffaf2',
+          boxShadow: 'inset 0 0 10px rgba(0,0,0,0.1)',
+          height: '240px'
+        }}>
+          <img
+            src="https://raw.githubusercontent.com/SahilRakhaiya05/ModyOS/main/reddit_moderator_snoo.png"
+            onError={(e) => {
+              // Fallback to local image if internet / raw git is not resolved
+              e.currentTarget.src = "/snoo.png";
+            }}
+            alt="ModDesk OS Reddit Moderator Snoo"
+            style={{
+              maxHeight: '100%',
+              maxWidth: '100%',
+              objectFit: 'contain',
+              imageRendering: 'pixelated'
+            }}
+          />
+        </div>
+
         <div className="boot-screen-log" aria-label="Boot log">
           {lines.map((line, idx) => (
             <div key={idx} className={`boot-screen-line tone-${line.kind}`}>

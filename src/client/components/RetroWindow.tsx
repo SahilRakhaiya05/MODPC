@@ -21,8 +21,8 @@ type WindowSize = { width: number; height: number };
 type WindowPos = { x: number; y: number };
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-const MIN_WIDTH = 320;
-const MIN_HEIGHT = 260;
+const MIN_WIDTH = 360;
+const MIN_HEIGHT = 300;
 const MENUBAR_HEIGHT = 44;
 const EDGE_THICKNESS = 6;
 const CORNER_SIZE = 14;
@@ -208,15 +208,22 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     };
   }, [resizeDir]);
 
+  const stateRef = useRef({ position, size });
+  useEffect(() => {
+    stateRef.current = { position, size };
+  }, [position, size]);
+
   // Keep window in viewport on resize
   useEffect(() => {
     const handleViewportResize = () => {
-      setSize((current) => clampSize(current, position));
-      setPosition((current) => clampPosition(current, size));
+      const currentPos = stateRef.current.position;
+      const currentSize = stateRef.current.size;
+      setSize((current) => clampSize(current, currentPos));
+      setPosition(clampPosition(currentPos, currentSize));
     };
     window.addEventListener('resize', handleViewportResize);
     return () => window.removeEventListener('resize', handleViewportResize);
-  }, [position, size]);
+  }, []);
 
   if (!isOpen) return null;
 

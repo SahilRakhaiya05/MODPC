@@ -39,7 +39,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div 
         className="glass-panel"
         style={{
-          width: '460px',
+          width: 'min(460px, calc(100vw - 24px))',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',

@@ -19,6 +19,7 @@ import { SentinelChat } from '../modules/SentinelChat';
 import { RiskRadar } from '../modules/RiskRadar';
 import { ActionComposer } from '../modules/ActionComposer';
 import { ShiftHandoff } from '../modules/ShiftHandoff';
+import { DeveloperAppsPanel } from '../modules/DeveloperAppsPanel';
 
 type WindowId =
   | 'home'
@@ -35,7 +36,8 @@ type WindowId =
   | 'sentinel'
   | 'radar'
   | 'composer'
-  | 'handoff';
+  | 'handoff'
+  | 'devapps';
 
 type WindowInfo = {
   isOpen: boolean;
@@ -130,6 +132,7 @@ const initialWindows: Record<WindowId, WindowInfo> = {
   radar: makeWindow('Risk Radar', 'RADAR', '980px', '650px', 98, 84),
   composer: makeWindow('Action Composer', 'DRAFT', '1000px', '660px', 116, 92),
   handoff: makeWindow('Shift Handoff', 'SHIFT', '980px', '640px', 136, 112),
+  devapps: makeWindow('Reddit Developer Apps', 'APP', '860px', '600px', 152, 104),
 };
 
 const modules: ProductModule[] = [
@@ -217,7 +220,7 @@ const modules: ProductModule[] = [
     id: 'sentinel',
     file: 'sentinel.ai',
     label: 'Sentinel AI',
-    description: 'RAG chat for queue triage, Automod, modmail tone, and launch-ready moderator workflows.',
+    description: 'Groq-powered moderation chat for queue triage, Automod, modmail tone, and launch-ready workflows.',
     icon: '/snoo.png',
     tint: '#dff3ff',
     category: 'Support',
@@ -242,6 +245,16 @@ const modules: ProductModule[] = [
     tint: '#fff0d1',
     category: 'Moderation',
     aliases: ['composer', 'draft', 'action', 'removal', 'reply'],
+  },
+  {
+    id: 'devapps',
+    file: 'reddit-apps.app',
+    label: 'Developer Apps',
+    description: 'Official Reddit Developer Platform links and install-management boundaries.',
+    icon: '/moddesk-icons/settings.png',
+    tint: '#e4f7f1',
+    category: 'Community Apps',
+    aliases: ['apps', 'developer', 'installed apps', 'browse apps', 'reddit apps'],
   },
   {
     id: 'handoff',
@@ -282,6 +295,7 @@ const windowIds: Exclude<WindowId, 'home'>[] = [
   'radar',
   'composer',
   'handoff',
+  'devapps',
 ];
 
 const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; label: string; hint: string }> }> = [
@@ -290,9 +304,13 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
     items: [
       { id: 'queue', label: 'Needs Review', hint: 'Reports, severity, rules, guarded actions' },
       { id: 'modmail', label: 'Modmail', hint: 'Replies, internal notes, archive workflow' },
+      { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
+      { id: 'modlog', label: 'Mod Log', hint: 'Reddit native log plus ModDesk audit' },
+      { id: 'automod', label: 'Automod', hint: 'Automod wiki sandbox and live publishing gates' },
       { id: 'consensus', label: 'Consensus', hint: 'Evidence-backed high-impact decisions' },
       { id: 'handoff', label: 'Handoff', hint: 'Pass context to the next moderator' },
       { id: 'usergrid', label: 'User Registry', hint: 'Banned, muted, approved, moderators' },
+      { id: 'academy', label: 'Mod Academy', hint: 'Demo / Training Mode scenarios' },
     ],
   },
   {
@@ -303,6 +321,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'insights', label: 'Insights', hint: 'Queue and mod activity trends' },
       { id: 'modlog', label: 'Modlog', hint: 'Reddit modlog plus audit trail' },
       { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
+      { id: 'devapps', label: 'Developer Apps', hint: 'Reddit Developer Platform links' },
     ],
   },
   {
@@ -316,7 +335,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
   {
     label: 'AI',
     items: [
-      { id: 'sentinel', label: 'Sentinel', hint: 'RAG assistant, sources, prompt preview' },
+      { id: 'sentinel', label: 'Sentinel', hint: 'Groq assistant, sources, prompt preview' },
       { id: 'composer', label: 'Composer', hint: 'Safe drafts and response shaping' },
       { id: 'radar', label: 'Source Library', hint: 'Radar context and retrieved cases' },
     ],
@@ -325,7 +344,8 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
     label: 'Settings',
     items: [
       { id: 'settings', label: 'Install Status', hint: 'Community picker and capabilities' },
-      { id: 'settings', label: 'Groq Setup', hint: 'Model status and fallback explanation' },
+      { id: 'devapps', label: 'Reddit Apps', hint: 'Installed apps, Browse Apps, Developer Apps links' },
+      { id: 'settings', label: 'Groq Setup', hint: 'Model status and connection errors' },
       { id: 'academy', label: 'Demo Mode', hint: 'Training and Mod Academy scenarios' },
       { id: 'audits', label: 'Audit Log', hint: 'Review guarded actions and outcomes' },
     ],
@@ -345,22 +365,24 @@ const commandItems: Array<{ label: string; target: WindowId | 'audits'; hint: st
   { label: 'Escalate to consensus', target: 'consensus', hint: 'Create evidence-backed case' },
   { label: 'Open user registry', target: 'usergrid', hint: 'Review user lists and guarded actions' },
   { label: 'Open capability matrix', target: 'settings', hint: 'See what is available now' },
+  { label: 'Open Reddit Developer Apps', target: 'devapps', hint: 'Manage app installs on Reddit Developer Platform' },
   { label: 'Open audit log', target: 'audits', hint: 'Review action history' },
 ];
 
 const defaultIconPositions: Record<ModuleId, IconPosition> = {
-  queue: { x: 28, y: 74 },
-  automod: { x: 28, y: 184 },
-  modlog: { x: 28, y: 294 },
-  insights: { x: 28, y: 404 },
-  sentinel: { x: 28, y: 514 },
-  radar: { x: 148, y: 74 },
-  modmail: { x: 148, y: 184 },
-  typewriter: { x: 148, y: 294 },
-  usergrid: { x: 148, y: 404 },
-  settings: { x: 148, y: 514 },
-  composer: { x: 268, y: 74 },
-  handoff: { x: 268, y: 184 },
+  queue: { x: 14, y: 74 },
+  automod: { x: 14, y: 184 },
+  modlog: { x: 14, y: 294 },
+  insights: { x: 14, y: 404 },
+  sentinel: { x: 14, y: 514 },
+  radar: { x: 14, y: 624 },
+  handoff: { x: 14, y: 734 },
+  modmail: { x: 118, y: 74 },
+  typewriter: { x: 118, y: 184 },
+  usergrid: { x: 118, y: 294 },
+  settings: { x: 118, y: 404 },
+  composer: { x: 118, y: 514 },
+  devapps: { x: 118, y: 624 },
 };
 
 const iconStorageKey = 'moddesk-os:desktop-icons:v1';
@@ -646,7 +668,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const renderModule = (target: WindowId) => {
     if (target === 'queue') return <QueueConsole profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} mode={mode} />;
     if (target === 'modmail') return <ModmailHub triggerToast={triggerToast} />;
-    if (target === 'automod') return <AutomodPanel triggerToast={triggerToast} />;
+    if (target === 'automod') return <AutomodPanel mode={mode} triggerToast={triggerToast} />;
     if (target === 'insights') return <InsightsPanel triggerToast={triggerToast} />;
     if (target === 'typewriter') return <Typewriter triggerToast={triggerToast} />;
     if (target === 'modlog') return <ModLogConsole triggerToast={triggerToast} />;
@@ -678,11 +700,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       );
     }
     if (target === 'handoff') return <ShiftHandoff triggerToast={triggerToast} openSentinel={() => openWindow('sentinel')} />;
-    return <ModAcademy profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
+    if (target === 'devapps') return <DeveloperAppsPanel session={session} />;
+    return <ModAcademy mode={mode} profile={profile} onProfileUpdate={setProfile} triggerToast={triggerToast} />;
   };
 
   return (
-    <main className="ph-os-shell">
+    <main className="ph-os-shell" data-wallpaper={settings.wallpaperId ?? 'wall1'}>
       <header className="ph-os-menubar">
         <div className="ph-os-menu-left">
           <button
