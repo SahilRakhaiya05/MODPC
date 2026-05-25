@@ -17,6 +17,15 @@ const fmtAgo = (iso: string | null): string => {
   return `${Math.floor(ms / 86_400_000)}d ago`;
 };
 
+const workspaceModes: OwnerWorkspaceConfig['defaultWorkspaceMode'][] = ['live', 'training'];
+const themeModes: OwnerWorkspaceConfig['defaultThemeMode'][] = ['modern', 'authentic', 'high_contrast'];
+
+const isWorkspaceMode = (value: string): value is OwnerWorkspaceConfig['defaultWorkspaceMode'] =>
+  workspaceModes.some((item) => item === value);
+
+const isThemeMode = (value: string): value is OwnerWorkspaceConfig['defaultThemeMode'] =>
+  themeModes.some((item) => item === value);
+
 export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, triggerToast }) => {
   const role = session?.modDeskRole ?? 'observer';
   const canEdit = role === 'owner' || role === 'admin';
@@ -41,7 +50,10 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
     }
   }, [triggerToast]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   const saveConfig = async (patch: Partial<OwnerWorkspaceConfig>) => {
     if (!canEdit) return;
@@ -55,6 +67,11 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateWelcomeDraft = (welcomeMessage: string) => {
+    if (!config) return;
+    setConfig({ ...config, welcomeMessage });
   };
 
   if (loading) {
@@ -124,7 +141,9 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
             <select
               disabled={!canEdit || saving}
               value={config.defaultWorkspaceMode}
-              onChange={(e) => void saveConfig({ defaultWorkspaceMode: e.target.value as 'live' | 'training' })}
+              onChange={(e) => {
+                if (isWorkspaceMode(e.target.value)) void saveConfig({ defaultWorkspaceMode: e.target.value });
+              }}
             >
               <option value="live">Live (real Reddit data)</option>
               <option value="training">Training (sandbox scenarios)</option>
@@ -136,7 +155,9 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
             <select
               disabled={!canEdit || saving}
               value={config.defaultThemeMode}
-              onChange={(e) => void saveConfig({ defaultThemeMode: e.target.value as 'authentic' | 'modern' | 'high_contrast' })}
+              onChange={(e) => {
+                if (isThemeMode(e.target.value)) void saveConfig({ defaultThemeMode: e.target.value });
+              }}
             >
               <option value="modern">Modern</option>
               <option value="authentic">Authentic</option>
@@ -177,12 +198,16 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
               rows={2}
               maxLength={500}
               value={config.welcomeMessage}
-              onChange={(e) => setConfig({ ...config, welcomeMessage: e.target.value })}
-              onBlur={(e) => {
-                if (e.target.value !== config.welcomeMessage) return;
-                void saveConfig({ welcomeMessage: e.target.value });
-              }}
+              onChange={(e) => updateWelcomeDraft(e.target.value)}
             />
+            <button
+              type="button"
+              className="glass-btn"
+              disabled={!canEdit || saving}
+              onClick={() => void saveConfig({ welcomeMessage: config.welcomeMessage })}
+            >
+              Save welcome message
+            </button>
           </label>
 
           <footer className="owner-admin-saved">

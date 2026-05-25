@@ -4162,7 +4162,7 @@ api.post('/team/chat/pin', async (c) => {
   if (!raw) {
     return c.json({ status: 'error', message: 'No chat history.' } satisfies ApiError, 404);
   }
-  let messages: ChatMessageType[] = [];
+  let messages: ChatMessageType[];
   try { messages = JSON.parse(raw) as ChatMessageType[]; }
   catch { messages = []; }
   const target = messages.find((m) => m.id === body.messageId);
@@ -4179,7 +4179,7 @@ api.delete('/team/chat/:messageId', async (c) => {
   const messageId = c.req.param('messageId');
   const raw = await redis.get(teamKey(mc.subredditName, 'messages'));
   if (!raw) return c.json({ status: 'error', message: 'No chat history.' } satisfies ApiError, 404);
-  let messages: ChatMessageType[] = [];
+  let messages: ChatMessageType[];
   try { messages = JSON.parse(raw) as ChatMessageType[]; }
   catch { messages = []; }
   const target = messages.find((m) => m.id === messageId);
@@ -4197,7 +4197,7 @@ api.delete('/team/chat/:messageId', async (c) => {
 // ── Owner admin + first-run (Phase 3) ─────────────────────────────────
 api.get('/owner/team', async (c) => {
   const mc = await requireModerator();
-  let mods: Array<{ username: string; modPermissions?: Map<string, unknown> }> = [];
+  let mods: Array<{ username: string; modPermissions?: Map<string, unknown> }>;
   try {
     const rawMods = await reddit.getModerators({ subredditName: mc.subredditName, limit: 100 }).all();
     mods = rawMods as unknown as Array<{ username: string; modPermissions?: Map<string, unknown> }>;

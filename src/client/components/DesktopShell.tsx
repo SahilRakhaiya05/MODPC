@@ -21,6 +21,9 @@ import { ShiftHandoff } from '../modules/ShiftHandoff';
 import { DeveloperAppsPanel } from '../modules/DeveloperAppsPanel';
 import { NativeRedditBridge } from '../modules/NativeRedditBridge';
 import { CommentCopPanel } from '../modules/CommentCopPanel';
+import { TeamChat } from '../modules/TeamChat';
+import { OwnerAdminPanel } from '../modules/OwnerAdminPanel';
+import { PersonalModPanel } from '../modules/PersonalModPanel';
 
 type WindowId =
   | 'home'
@@ -39,7 +42,10 @@ type WindowId =
   | 'handoff'
   | 'devapps'
   | 'bridge'
-  | 'commentcop';
+  | 'commentcop'
+  | 'teamchat'
+  | 'owneradmin'
+  | 'personal';
 
 type WindowInfo = {
   isOpen: boolean;
@@ -136,6 +142,9 @@ const initialWindows: Record<WindowId, WindowInfo> = {
   devapps: makeWindow('Reddit Developer Apps', 'APP', '860px', '600px', 152, 104),
   bridge: makeWindow('Native Reddit Bridge', 'NAV', '900px', '640px', 144, 96),
   commentcop: makeWindow('CommentCop Shield', 'COP', '940px', '640px', 118, 76),
+  teamchat: makeWindow('Team Chat', 'CHAT', '940px', '660px', 132, 84),
+  owneradmin: makeWindow('Owner Admin', 'OWN', '960px', '660px', 156, 96),
+  personal: makeWindow('My Mod Panel', 'ME', '880px', '640px', 176, 108),
 };
 
 const modules: ProductModule[] = [
@@ -270,6 +279,36 @@ const modules: ProductModule[] = [
     aliases: ['apps', 'developer', 'installed apps', 'browse apps', 'reddit apps'],
   },
   {
+    id: 'personal',
+    file: 'my-panel.app',
+    label: 'My Panel',
+    description: 'Personal moderator preferences, private pinned modules, and notification counters.',
+    icon: '/moddesk-icons/users.png',
+    tint: '#f6e9ff',
+    category: 'Settings',
+    aliases: ['personal', 'my panel', 'prefs', 'notifications'],
+  },
+  {
+    id: 'teamchat',
+    file: 'team-chat.app',
+    label: 'Team Chat',
+    description: 'Private Redis-backed moderator channel with mentions and owner/admin pins.',
+    icon: '/moddesk-icons/modmail.png',
+    tint: '#e2f3ff',
+    category: 'Support',
+    aliases: ['chat', 'team', 'mentions', 'communication'],
+  },
+  {
+    id: 'owneradmin',
+    file: 'owner-admin.app',
+    label: 'Owner Admin',
+    description: 'Owner/admin defaults, moderator roster, install links, and first-run configuration.',
+    icon: '/moddesk-icons/settings.png',
+    tint: '#ffe8d8',
+    category: 'Settings',
+    aliases: ['owner', 'admin', 'install', 'roster'],
+  },
+  {
     id: 'handoff',
     file: 'shift-handoff.app',
     label: 'Shift Handoff',
@@ -301,6 +340,8 @@ const mainTabs: Array<{ id: WindowId; label: string }> = [
   { id: 'radar', label: 'Crisis Radar' },
   { id: 'composer', label: 'Composer' },
   { id: 'handoff', label: 'Handoff' },
+  { id: 'teamchat', label: 'Team Chat' },
+  { id: 'personal', label: 'My Panel' },
 ];
 
 // Window IDs rendered via RetroWindow (home is a special permanent shell rendered separately).
@@ -321,6 +362,9 @@ const windowIds: Exclude<WindowId, 'home'>[] = [
   'devapps',
   'bridge',
   'commentcop',
+  'teamchat',
+  'owneradmin',
+  'personal',
 ];
 
 const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; label: string; hint: string }> }> = [
@@ -334,6 +378,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'automod', label: 'Automod', hint: 'Automod wiki sandbox and live publishing gates' },
       { id: 'commentcop', label: 'CommentCop', hint: 'Anti-bot copied-comment shield' },
       { id: 'consensus', label: 'Consensus', hint: 'Evidence-backed high-impact decisions' },
+      { id: 'teamchat', label: 'Team Chat', hint: 'Private moderator channel and mentions' },
       { id: 'handoff', label: 'Handoff', hint: 'Pass context to the next moderator' },
       { id: 'usergrid', label: 'User Registry', hint: 'Banned, muted, approved, moderators' },
     ],
@@ -371,6 +416,8 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
     items: [
       { id: 'settings', label: 'Install Status', hint: 'Community picker and capabilities' },
       { id: 'devapps', label: 'Reddit Apps', hint: 'Installed apps, Browse Apps, Developer Apps links' },
+      { id: 'personal', label: 'My Panel', hint: 'Your private per-moderator preferences' },
+      { id: 'owneradmin', label: 'Owner Admin', hint: 'Owner/admin install and team defaults' },
       { id: 'settings', label: 'Groq Setup', hint: 'Model status and connection errors' },
       { id: 'audits', label: 'Audit Log', hint: 'Review guarded actions and outcomes' },
     ],
@@ -381,6 +428,9 @@ const commandItems: Array<{ label: string; target: WindowId | 'audits'; hint: st
   { label: 'Open Sentinel', target: 'sentinel', hint: 'Ask Sentinel and inspect source cards' },
   { label: 'Review queue', target: 'queue', hint: 'Open Needs Review' },
   { label: 'Open modmail', target: 'modmail', hint: 'Reply, note, archive, draft' },
+  { label: 'Open team chat', target: 'teamchat', hint: 'Private moderator communication' },
+  { label: 'Open my panel', target: 'personal', hint: 'Personal moderator prefs and notifications' },
+  { label: 'Open owner admin', target: 'owneradmin', hint: 'Owner/admin first-run config and mod roster' },
   { label: 'Draft modmail reply', target: 'sentinel', hint: 'Start from Sentinel draft prompt' },
   { label: 'Open Automod Studio', target: 'automod', hint: 'Validate and diff Automod changes' },
   { label: 'Open CommentCop', target: 'commentcop', hint: 'Configure copied-comment bot protection' },
@@ -410,6 +460,9 @@ const defaultIconPositions: Record<ModuleId, IconPosition> = {
   devapps: { x: 118, y: 624 },
   bridge: { x: 118, y: 734 },
   commentcop: { x: 222, y: 74 },
+  teamchat: { x: 222, y: 184 },
+  personal: { x: 222, y: 294 },
+  owneradmin: { x: 222, y: 404 },
 };
 
 const iconStorageKey = 'moddesk-os:desktop-icons:v1';
@@ -454,7 +507,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
   const [auditTicker, setAuditTicker] = useState<AuditEvent[]>(statusData.recentAudits ?? []);
   const [homeStats, setHomeStats] = useState<HomeStats>(() => fallbackStats(statusData.recentAudits?.length ?? 0));
-  const workspaceMode = 'live' as const;
+  const workspaceMode = settings.workspaceMode === 'training' ? 'demo' : 'live';
   const [windows, setWindows] = useState<Record<WindowId, WindowInfo>>({
     ...initialWindows,
     home: { ...initialWindows.home, isOpen: true },
@@ -724,9 +777,21 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       );
     }
     if (target === 'handoff') return <ShiftHandoff triggerToast={triggerToast} openSentinel={() => openWindow('sentinel')} />;
-    if (target === 'devapps') return <DeveloperAppsPanel session={session} onLaunch={(t) => openWindow(t as WindowId)} />;
+    if (target === 'devapps') return <DeveloperAppsPanel session={session} onLaunch={(t) => openWindow(t)} />;
     if (target === 'bridge') return <NativeRedditBridge session={session} />;
     if (target === 'commentcop') return <CommentCopPanel triggerToast={triggerToast} />;
+    if (target === 'teamchat') return <TeamChat session={session} triggerToast={triggerToast} />;
+    if (target === 'owneradmin') return <OwnerAdminPanel session={session} triggerToast={triggerToast} />;
+    if (target === 'personal') {
+      return (
+        <PersonalModPanel
+          session={session}
+          triggerToast={triggerToast}
+          openTeamChat={() => openWindow('teamchat')}
+          openOwnerAdmin={() => openWindow('owneradmin')}
+        />
+      );
+    }
     return <CommentCopPanel triggerToast={triggerToast} />;
   };
 

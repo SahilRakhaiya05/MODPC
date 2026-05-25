@@ -7,10 +7,11 @@ import { createRoot } from 'react-dom/client';
 import { BootScreen } from './components/BootScreen';
 import { DesktopShell } from './components/DesktopShell';
 import { AccessGate } from './components/AccessGate';
+import { FirstRunWizard } from './components/FirstRunWizard';
 import { SystemToast } from './components/SystemToast';
 import { api } from './utils/api';
 import type { SystemStatus } from './types';
-import type { SessionResponse } from '../shared/api';
+import type { FirstRunStatus, SessionResponse } from '../shared/api';
 
 type Toast = {
   id: string;
@@ -128,12 +129,29 @@ const createPreviewSession = (): SessionResponse => ({
   },
 });
 
+const applyOwnerDefaults = async (statusData: SystemStatus): Promise<SystemStatus> => {
+  const ownerConfig = await api.getOwnerConfig().catch(() => null);
+  if (!ownerConfig) return statusData;
+  const themeMode = ownerConfig.config.defaultThemeMode === 'high_contrast'
+    ? 'high-contrast'
+    : ownerConfig.config.defaultThemeMode;
+  return {
+    ...statusData,
+    settings: {
+      ...statusData.settings,
+      workspaceMode: ownerConfig.config.defaultWorkspaceMode,
+      themeMode,
+    },
+  };
+};
+
 export function App() {
   const [data, setData] = useState<SystemStatus | null>(null);
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [booting, setBooting] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [setupStatus, setSetupStatus] = useState<FirstRunStatus | null>(null);
 
   const addToast = useCallback((message: string, tone: Toast['tone'] = 'info') => {
     setToasts((items) => [...items, { id: `${Date.now()}-${Math.random()}`, message, tone }]);
@@ -148,12 +166,17 @@ export function App() {
         setBooting(false);
         return;
       }
-      const statusData = await api.getStatus();
+      const statusData = await applyOwnerDefaults(await api.getStatus());
       setData(statusData);
+      if (sessionData.modDeskRole === 'owner' || sessionData.modDeskRole === 'admin') {
+        const setup = await api.getSetupStatus().catch(() => null);
+        setSetupStatus(setup);
+      }
     } catch (err) {
       if (import.meta.env.DEV) {
         setSession(createPreviewSession());
         setData(createPreviewStatus());
+        setSetupStatus({ completed: true, completedAt: new Date().toISOString(), completedBy: 'preview_mod' });
         return;
       }
       setError(err instanceof Error ? err.message : 'Unable to load ModDesk OS.');
@@ -164,7 +187,7 @@ export function App() {
     // Toggles the bootloader sequence for a clean React visual reset
     setBooting(true);
     try {
-      const statusData = await api.getStatus();
+      const statusData = await applyOwnerDefaults(await api.getStatus());
       setData(statusData);
     } catch (err) {
       if (import.meta.env.DEV) {
@@ -237,6 +260,24 @@ export function App() {
       <BootScreen
         onComplete={handleBootComplete}
         subredditName={data.settings.subredditName}
+      />
+    );
+  }
+
+  if (
+    session &&
+    (session.modDeskRole === 'owner' || session.modDeskRole === 'admin') &&
+    setupStatus &&
+    !setupStatus.completed
+  ) {
+    return (
+      <FirstRunWizard
+        session={session}
+        onComplete={() => setSetupStatus({
+          completed: true,
+          completedAt: new Date().toISOString(),
+          completedBy: session.username,
+        })}
       />
     );
   }

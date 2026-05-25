@@ -2251,6 +2251,501 @@ button {
   font-size: 13px;
 }
 
+.access-card-rich {
+  width: min(100%, 780px);
+}
+
+.access-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.access-meta div,
+.access-steps li {
+  padding: 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fffaf2;
+}
+
+.access-meta span,
+.access-steps span,
+.access-actions span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.access-meta strong,
+.access-steps strong,
+.access-actions strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.access-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.access-actions {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #fff3df;
+}
+
+.access-actions code {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.wizard-shell,
+.chat-panel,
+.owner-admin-panel,
+.personal-panel {
+  min-height: 100%;
+  color: var(--ink);
+}
+
+.wizard-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background: var(--page);
+}
+
+.wizard-card {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 860px);
+  padding: 22px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  box-shadow: var(--shadow-hard);
+}
+
+.wizard-header,
+.chat-header,
+.owner-admin-header,
+.personal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.wizard-header h1,
+.wizard-step h2,
+.chat-header h3,
+.owner-admin-header h3,
+.personal-header h3 {
+  margin: 4px 0 6px;
+}
+
+.wizard-header p,
+.wizard-step p,
+.chat-header p,
+.owner-admin-header p,
+.personal-header p,
+.personal-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.wizard-mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--orange);
+  color: white;
+  font-weight: 900;
+}
+
+.wizard-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.wizard-progress span {
+  height: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: #eadfd1;
+}
+
+.wizard-progress span.on {
+  background: var(--orange);
+  border-color: var(--line);
+}
+
+.wizard-step,
+.owner-admin-card,
+.personal-card,
+.chat-pinned,
+.chat-stream,
+.chat-composer {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #fffaf2;
+}
+
+.wizard-choice,
+.wizard-toggle,
+.owner-admin-toggle,
+.personal-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.wizard-choice.on {
+  border-color: var(--orange);
+  background: #fff3df;
+}
+
+.wizard-choice span,
+.wizard-toggle span,
+.owner-admin-toggle span,
+.personal-toggle span,
+.wizard-hint,
+.owner-admin-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wizard-step textarea,
+.owner-admin-field textarea,
+.owner-admin-field select,
+.personal-field select,
+.chat-composer textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  color: var(--ink);
+  font: inherit;
+}
+
+.wizard-error {
+  margin: 0;
+  color: var(--red);
+  font-weight: 800;
+}
+
+.wizard-footer,
+.owner-team-footer,
+.owner-admin-actions,
+.personal-actions,
+.personal-footer,
+.chat-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wizard-footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-panel,
+.owner-admin-panel,
+.personal-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.chat-header-meta,
+.owner-admin-role,
+.personal-role-card {
+  min-width: 150px;
+  padding: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #fff3df;
+}
+
+.chat-header-meta span,
+.owner-admin-role span,
+.personal-role-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chat-header-meta strong,
+.owner-admin-role strong,
+.personal-role-card strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.chat-header-meta em,
+.owner-admin-role em,
+.personal-role-card em {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.chat-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-filters button,
+.chat-pill,
+.personal-pin-list button {
+  border: 1.5px solid var(--line-soft);
+  border-radius: 999px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.chat-filters button,
+.chat-pill {
+  padding: 6px 10px;
+}
+
+.chat-filters button.active,
+.personal-pin-list button.active {
+  border-color: var(--orange);
+  background: #fff3df;
+}
+
+.chat-presence {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.chat-stream {
+  min-height: 260px;
+  max-height: 370px;
+  overflow: auto;
+}
+
+.chat-row,
+.chat-pinned-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.chat-row.me {
+  background: #f2fbff;
+}
+
+.chat-row.mention {
+  border-color: var(--orange);
+}
+
+.chat-row header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-row p,
+.chat-pinned-row p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-role,
+.chat-flag,
+.owner-role-pill,
+.owner-flag {
+  padding: 2px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: #fffdf8;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chat-row time,
+.chat-pinned-row time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.chat-mention {
+  color: #1d4ed8;
+  font-weight: 900;
+}
+
+.chat-mention.me {
+  color: var(--orange);
+}
+
+.chat-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-link {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.chat-link.danger {
+  color: var(--red);
+}
+
+.chat-empty,
+.personal-panel-loading,
+.owner-admin-loading {
+  padding: 26px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.owner-team-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.owner-team-list li {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.owner-team-list li.is-you {
+  border-color: var(--orange);
+}
+
+.owner-team-meta,
+.owner-team-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.owner-team-stats,
+.owner-admin-saved,
+.personal-footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.owner-admin-field,
+.personal-field {
+  display: grid;
+  gap: 6px;
+}
+
+.owner-admin-field span,
+.personal-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.personal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.personal-card.wide {
+  grid-column: 1 / -1;
+}
+
+.personal-stat-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.personal-stat-row div {
+  padding: 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.personal-stat-row strong {
+  display: block;
+  font-size: 28px;
+}
+
+.personal-stat-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.personal-pin-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.personal-pin-list button {
+  padding: 7px 10px;
+}
+
 .module-empty {
   display: grid;
   place-items: center;
@@ -7238,4 +7733,3 @@ button {
 
 [data-theme="dark"] .store-tabs button.active,
 [data-theme="dark"] .store-chips button.active { background: #3a2a10; color: #ffe9bd; }
-

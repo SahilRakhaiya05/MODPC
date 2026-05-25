@@ -72,10 +72,11 @@ export const TeamChat: React.FC<TeamChatProps> = ({ session, triggerToast }) => 
 
   useEffect(() => {
     mountedRef.current = true;
-    void refresh();
+    const initialLoad = window.setTimeout(() => void refresh(), 0);
     const t = window.setInterval(() => { void refresh(true); }, POLL_MS);
     return () => {
       mountedRef.current = false;
+      window.clearTimeout(initialLoad);
       window.clearInterval(t);
     };
   }, [refresh]);
