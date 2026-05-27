@@ -27,6 +27,33 @@ export const ShiftHandoff: React.FC<ShiftHandoffProps> = ({ triggerToast, openSe
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const generateHandoff = async () => {
+    if (!data) {
+      triggerToast('Handoff data is still loading.', 'warning');
+      return;
+    }
+    setLoading(true);
+    try {
+      const prompt = [
+        'Draft a concise moderator shift handoff note from the snapshot below.',
+        'Return only the handoff draft text. Keep it readable, actionable, and ready to paste into the notes field.',
+        `Pressure: ${data.current.pressureScore}/100.`,
+        `Queue open: ${data.current.queueOpen}. Modmail open: ${data.current.modmailOpen ?? 0}. Audit count: ${data.current.auditCount}. Pending consensus: ${data.current.pendingConsensus}.`,
+        data.current.nextModItems.length ? `Needs next mod: ${data.current.nextModItems.join('; ')}` : 'Needs next mod: no urgent handoff items.',
+        data.current.recentChanges.length ? `What changed: ${data.current.recentChanges.join('; ')}` : 'What changed: no recent changes recorded.',
+        notes ? `Existing notes to preserve or improve: ${notes}` : 'Existing notes: none.',
+      ].join('\n');
+      const response = await api.askAi({ prompt, history: [] });
+      setNotes(response.reply.trim());
+      triggerToast('Sentinel drafted the handoff notes.', 'success');
+      openSentinel();
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : 'Sentinel could not draft the handoff.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     api.getHandoff()
@@ -105,7 +132,7 @@ export const ShiftHandoff: React.FC<ShiftHandoffProps> = ({ triggerToast, openSe
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What should the next moderator know?" />
           </label>
           <div className="handoff-actions">
-            <button type="button" className="glass-btn" onClick={openSentinel}>Generate with Sentinel</button>
+            <button type="button" className="glass-btn" onClick={() => void generateHandoff()} disabled={loading}>Generate with Sentinel</button>
             <button type="button" className="glass-btn primary" onClick={() => void create()} disabled={loading}>Save handoff</button>
           </div>
         </section>

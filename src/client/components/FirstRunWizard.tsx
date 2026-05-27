@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { navigateTo } from '@devvit/web/client';
 import type { OwnerWorkspaceConfig, SessionResponse } from '../../shared/api';
 import { api } from '../utils/api';
 
@@ -16,7 +17,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ session, onCompl
     requireConfirmationOnLive: true,
     allowTraineeAccess: true,
     defaultThemeMode: 'modern',
-    welcomeMessage: `Welcome to ModDesk for r/${session.subredditName}. Pick your queue from the dock and keep good notes.`,
+    welcomeMessage: `Welcome to MODPC for r/${session.subredditName}. Pick your queue from the dock and keep good notes.`,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -54,7 +55,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ session, onCompl
           <div className="wizard-mark">MD</div>
           <div>
             <span className="ph-kicker">First-run setup · {step + 1} / 4</span>
-            <h1>Welcome to ModDesk OS, u/{session.username ?? 'owner'}</h1>
+            <h1>Welcome to MODPC, u/{session.username ?? 'owner'}</h1>
             <p>Configure workspace defaults for the moderators of r/{session.subredditName}. You can change anything later from Owner Admin.</p>
           </div>
         </header>
@@ -93,6 +94,19 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ session, onCompl
                 <span>Sandbox scenarios + Mod Academy. Good for onboarding new mods before they touch the live queue.</span>
               </div>
             </label>
+            <div className="wizard-actions">
+              <button
+                type="button"
+                className="glass-btn primary"
+                onClick={() => navigateTo('https://www.reddit.com/subreddits/create')}
+              >
+                Create a subreddit on Reddit
+              </button>
+              <p className="wizard-hint">
+                MODPC cannot create a subreddit automatically. Use Reddit's community creation page first, then install
+                MODPC into the new subreddit as an owner or admin.
+              </p>
+            </div>
           </section>
         )}
 
@@ -152,7 +166,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ session, onCompl
         {step === 3 && (
           <section className="wizard-step">
             <h2>4 · Welcome message</h2>
-            <p>Shown on the ModDesk home screen for every moderator.</p>
+            <p>Shown on the MODPC home screen for every moderator.</p>
             <textarea
               rows={4}
               maxLength={500}

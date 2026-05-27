@@ -56,7 +56,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const error = (await response.json().catch(() => ({ message: response.statusText }))) as { message?: string };
-    throw new Error(error.message ?? 'ModDesk OS request failed.');
+    throw new Error(error.message ?? 'MODPC request failed.');
   }
   return (await response.json()) as T;
 }
@@ -144,7 +144,7 @@ export const api = {
 
   async resetDb(): Promise<{ success: boolean; message: string }> {
     await apiFetch<{ status: string }>('/reset', { method: 'POST' });
-    return { success: true, message: 'ModDesk configuration reseeded successfully.' };
+    return { success: true, message: 'MODPC configuration reseeded successfully.' };
   },
 
   async updateSettings(settings: Partial<AppSettings>): Promise<{ success: boolean; settings: AppSettings }> {
@@ -803,30 +803,30 @@ export const api = {
       return {
         reply:
           [
-            'Sentinel AI could not reach the server-side Groq service.',
+            'Sentinel AI could not reach the server-side model service.',
             '',
             'Cause:',
-            'The Devvit server API is unavailable in local Vite preview, so no Groq request was made.',
+            'The Devvit server API is unavailable in local Vite preview, so no AI request was made.',
             '',
             'Recovery action:',
-            'Run the Devvit playtest server, verify devvit.json allows api.groq.com, save a Groq API key in Settings, then use Test Groq Connection.',
+            'Run the Devvit playtest server, verify devvit.json allows the selected provider domain, save an API key in Settings, then use Test AI Connection.',
           ].join('\n'),
-        model: 'Groq unavailable in preview',
+        model: 'AI unavailable in preview',
         status: 'error',
         promptPreview: payload.prompt,
-        reasoningSummary: 'No AI answer was generated because the server-side Groq service was unreachable.',
-        recommendedAction: 'Start Devvit server and test Groq connection.',
+        reasoningSummary: 'No AI answer was generated because the server-side model service was unreachable.',
+        recommendedAction: 'Start the Devvit server and test the AI connection.',
         riskLevel: 'medium',
-        relatedPolicy: 'Sentinel Groq configuration',
+        relatedPolicy: 'Sentinel AI configuration',
         confidence: 'low',
-        nextSuggestedAction: 'Fix Groq service access before using Sentinel.',
+        nextSuggestedAction: 'Fix AI service access before using Sentinel.',
         modeLabel: 'demo-only',
         suggestedTasks: [],
-        errorReason: 'Devvit server was unavailable in local Vite preview; Groq was not called.',
+        errorReason: 'Devvit server was unavailable in local Vite preview; AI was not called.',
         modelStatus: {
           status: 'error',
           provider: 'none',
-          model: 'server-side Groq',
+          model: 'server-side AI',
           lastError: 'Devvit server was unavailable in local Vite preview.',
         },
         sources: [

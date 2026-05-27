@@ -3367,7 +3367,7 @@ button {
   }
 }
 
-/* ModDesk OS rebuild overrides: compact PostHog-style product shell, Reddit-native modules. */
+/* MODPC rebuild overrides: compact PostHog-style product shell, Reddit-native modules. */
 @media (min-width: 921px) {
   .ph-home-window {
     width: min(1200px, calc(100vw - 248px));
@@ -5087,8 +5087,22 @@ button {
 .bridge-browser {
   display: grid;
   gap: 10px;
-  min-height: 260px;
   padding: 10px;
+}
+
+.bridge-launcher {
+  min-height: auto;
+}
+
+.bridge-launcher strong {
+  font-size: 14px;
+}
+
+.bridge-launcher p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .bridge-urlbar {
@@ -5148,6 +5162,53 @@ button {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.commentcop-reddit-only {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #eaf8ef;
+}
+
+.commentcop-reddit-only strong {
+  font-size: 12px;
+}
+
+.commentcop-reddit-only span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.owner-access-table {
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+}
+
+.owner-access-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(4, minmax(110px, 1fr));
+  gap: 8px;
+  align-items: center;
+  min-width: 650px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.owner-access-row.head {
+  background: #fff3df;
+}
+
+.owner-access-row span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .bridge-section {
@@ -7137,7 +7198,7 @@ button {
 }
 
 /* ==========================================================================
-   ModDesk OS Responsive Tool Modules Helper Classes
+  MODPC Responsive Tool Modules Helper Classes
    ========================================================================== */
 
 .queue-console-layout {
@@ -7678,6 +7739,10 @@ button {
   border-radius: 9px;
   background: #fffaf2;
   overflow: hidden;
+}
+
+.store-preview-frame--launcher {
+  min-height: 160px;
 }
 
 .store-preview-frame iframe {

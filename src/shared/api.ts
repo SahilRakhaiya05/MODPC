@@ -606,8 +606,6 @@ export type CommentCopSettings = {
   action: CommentCopAction;
   minTokenCount: number;
   rollingWindowSize: number;
-  supabaseVerificationEnabled: boolean;
-  supabaseUrlConfigured: boolean;
 };
 
 export type CommentCopCase = {
@@ -620,7 +618,7 @@ export type CommentCopCase = {
   matchedCommentId: string;
   matchedAuthor: string;
   action: CommentCopAction | 'ignored' | 'duplicate_trigger';
-  source: 'redis' | 'supabase' | 'redis_and_supabase';
+  source: 'reddit_redis';
   excerpt: string;
   matchedExcerpt: string;
   reason: string;

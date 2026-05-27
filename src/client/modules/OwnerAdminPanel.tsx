@@ -26,6 +26,16 @@ const isWorkspaceMode = (value: string): value is OwnerWorkspaceConfig['defaultW
 const isThemeMode = (value: string): value is OwnerWorkspaceConfig['defaultThemeMode'] =>
   themeModes.some((item) => item === value);
 
+const accessRules = [
+  { tool: 'Owner Admin', owner: 'Full access', admin: 'Full access', moderator: 'Hidden', trainee: 'Hidden' },
+  { tool: 'My Panel', owner: 'Personal prefs', admin: 'Personal prefs', moderator: 'Personal prefs', trainee: 'Personal prefs' },
+  { tool: 'Team Chat', owner: 'Post, pin, delete', admin: 'Post, pin, delete', moderator: 'Post, delete own', trainee: 'Read/post if allowed' },
+  { tool: 'Settings', owner: 'Edit app defaults', admin: 'Edit app defaults', moderator: 'Personal/community status', trainee: 'View status' },
+  { tool: 'CommentCop', owner: 'Configure + review', admin: 'Configure + review', moderator: 'Review cases', trainee: 'View cases' },
+  { tool: 'Native Reddit Bridge', owner: 'All links', admin: 'All links', moderator: 'Moderator-safe links', trainee: 'Moderator-safe links' },
+  { tool: 'Live Reddit actions', owner: 'Allowed with guardrails', admin: 'Allowed with guardrails', moderator: 'Allowed with permissions', trainee: 'Blocked' },
+];
+
 export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, triggerToast }) => {
   const role = session?.modDeskRole ?? 'observer';
   const canEdit = role === 'owner' || role === 'admin';
@@ -100,7 +110,7 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
         <span className="module-eyebrow">Mod team ({members.length})</span>
         <p className="owner-admin-hint">
           Synced from Reddit's moderator list. Promoting / removing moderators happens on Reddit; this view shows who
-          can use ModDesk in r/{session?.subredditName}.
+          can use MODPC in r/{session?.subredditName}.
         </p>
         <ul className="owner-team-list">
           {members.map((m) => (
@@ -125,6 +135,32 @@ export const OwnerAdminPanel: React.FC<OwnerAdminPanelProps> = ({ session, trigg
           >
             Manage on Reddit ↗
           </button>
+        </div>
+      </section>
+
+      <section className="owner-admin-card">
+        <span className="module-eyebrow">Access rules</span>
+        <p className="owner-admin-hint">
+          These UI rules mirror the server endpoints: non-moderators never enter the workspace, moderators get private
+          tools and shared review tools, and only owner/admin roles see install and admin controls.
+        </p>
+        <div className="owner-access-table" role="table" aria-label="MODPC role access rules">
+          <div className="owner-access-row head" role="row">
+            <strong>Tool</strong>
+            <strong>Owner</strong>
+            <strong>Admin</strong>
+            <strong>Moderator</strong>
+            <strong>Trainee</strong>
+          </div>
+          {accessRules.map((item) => (
+            <div key={item.tool} className="owner-access-row" role="row">
+              <strong>{item.tool}</strong>
+              <span>{item.owner}</span>
+              <span>{item.admin}</span>
+              <span>{item.moderator}</span>
+              <span>{item.trainee}</span>
+            </div>
+          ))}
         </div>
       </section>
 

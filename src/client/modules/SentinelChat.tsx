@@ -30,7 +30,7 @@ const initialMessage: ChatBubble = {
   role: 'assistant',
   content:
     "I'm Sentinel, your Reddit moderation assistant. I can help triage reports, explain subreddit rules, draft modmail replies, summarize queue pressure, review Automod changes, prepare consensus tickets, and investigate repeated bot patterns.",
-  model: 'ModDesk Sentinel',
+  model: 'ModDesk Sentinel AI',
   sources: [],
 };
 
@@ -43,8 +43,8 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
   const [latestModelStatus, setLatestModelStatus] = useState<AiChatResponse['modelStatus']>({
     status: 'disabled',
     provider: 'none',
-    model: 'Groq not tested',
-    lastError: 'Ask Sentinel a question or run Test Groq Connection in Settings.',
+    model: 'AI not tested',
+    lastError: 'Ask Sentinel a question or run Test AI Connection in Settings.',
   });
   const nextIdRef = useRef(0);
 
@@ -84,9 +84,9 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
       setLastPromptPreview(response.promptPreview);
       setLatestModelStatus(response.modelStatus);
       if (response.status === 'not_configured') {
-        triggerToast('Sentinel AI is not configured. Owner/admin must add a Groq API key in Settings.', 'warning');
+        triggerToast('Sentinel AI is not configured. Owner/admin must add an API key in Settings.', 'warning');
       } else if (response.status === 'error') {
-        triggerToast(response.errorReason ?? 'Sentinel AI failed. Check Groq settings.', 'error');
+        triggerToast(response.errorReason ?? 'Sentinel AI failed. Check model settings.', 'error');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sentinel could not answer that request.';
@@ -99,7 +99,7 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
           role: 'assistant',
           content: `I could not reach the moderation assistant. ${message}`,
           status: 'error',
-          model: 'Groq unavailable',
+          model: 'AI unavailable',
           modelStatus: {
             status: 'error',
             provider: 'none',
@@ -116,12 +116,12 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
     <section className="sentinel-chat">
       <header className="sentinel-hero">
         <div>
-          <span className="module-eyebrow">Groq moderation assistant</span>
+          <span className="module-eyebrow">Sentinel moderation assistant</span>
           <h3>Sentinel AI Chat</h3>
-          <p>Uses Groq chat completions for Reddit moderation help, with optional ModDesk workspace context and source references.</p>
+          <p>Uses the configured AI provider for Reddit moderation help, with optional MODPC workspace context and source references.</p>
         </div>
         <div className="sentinel-status">
-          <strong>{loading ? 'Thinking' : latestModelStatus.provider === 'groq' && latestModelStatus.status === 'connected' ? 'Groq Connected' : latestModelStatus.status === 'disabled' ? 'AI Not Configured' : 'Needs Attention'}</strong>
+          <strong>{loading ? 'Thinking' : latestModelStatus.status === 'connected' ? 'AI Connected' : latestModelStatus.status === 'disabled' ? 'AI Not Configured' : 'Needs Attention'}</strong>
           <span>{latestModelStatus.provider} / {latestModelStatus.model ?? 'unknown model'}</span>
         </div>
       </header>
@@ -195,9 +195,9 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
               <article className="sentinel-message assistant pending">
                 <div className="sentinel-message-meta">
                   <strong>Sentinel</strong>
-                  <span>calling Groq</span>
+                  <span>calling AI provider</span>
                 </div>
-                <p>Preparing workspace context, then sending the request to Groq...</p>
+                <p>Preparing workspace context, then sending the request to the configured AI provider...</p>
               </article>
             )}
           </div>
@@ -247,7 +247,7 @@ export const SentinelChat: React.FC<SentinelChatProps> = ({ triggerToast }) => {
               <p>{lastPromptPreview || 'The assistant prompt is composed on the server with retrieved context and safety guardrails.'}</p>
             </div>
           ) : visibleSources.length === 0 ? (
-            <p className="moddesk-empty">Ask a question to see which live Reddit and ModDesk records Sentinel retrieved.</p>
+            <p className="moddesk-empty">Ask a question to see which live Reddit and MODPC records Sentinel retrieved.</p>
           ) : (
             <div className="sentinel-source-list">
               {visibleSources.map((source) => (

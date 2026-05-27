@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "mody-os",
+  "name": "modpc1moderator",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -18,10 +18,6 @@
     "entry": "index.cjs"
   },
   "permissions": {
-    "http": {
-      "enable": true,
-      "domains": ["api.groq.com"]
-    },
     "redis": true,
     "reddit": {
       "enable": true,
@@ -31,22 +27,22 @@
   "menu": {
     "items": [
       {
-        "label": "Open ModDesk OS",
-        "description": "Launch the private moderator operations desk",
+        "label": "Open MODPC",
+        "description": "Launch the moderator operations desk",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
       },
       {
-        "label": "Open in ModDesk",
-        "description": "Open this item inside the ModDesk moderation workspace",
+        "label": "Open in MODPC",
+        "description": "Open this item inside the MODPC moderation workspace",
         "location": "post",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/open"
       },
       {
-        "label": "Open in ModDesk",
-        "description": "Open this comment inside the ModDesk moderation workspace",
+        "label": "Open in MODPC",
+        "description": "Open this comment inside the MODPC moderation workspace",
         "location": "comment",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/open"
@@ -105,6 +101,6 @@
     "build": "vite build"
   },
   "dev": {
-    "subreddit": "mody_os_dev"
+    "subreddit": "AIMODPC"
   }
 }

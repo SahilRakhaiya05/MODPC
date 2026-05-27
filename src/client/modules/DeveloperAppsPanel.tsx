@@ -122,8 +122,8 @@ const CATALOG: CatalogApp[] = [
     origin: 'internal',
     tagline: 'Anti-bot shield for copied / duplicated comments.',
     description:
-      'Redis-backed similarity check with optional Supabase vector verification. Catches copy-paste karma farming and burst-posting bots before they ladder up.',
-    capabilities: ['onCommentSubmit trigger', 'Redis SIMHASH', 'Supabase vectors (optional)'],
+      'Reddit Redis-backed similarity check for copied comments. Catches copy-paste karma farming and burst-posting bots without any external database.',
+    capabilities: ['onCommentCreate trigger', 'Reddit Redis rolling window', 'Jaccard similarity'],
     permissions: ['Read comments', 'Remove comments', 'Read user history'],
     icon: '◎',
     iconTint: '#e5f4ff',
@@ -684,7 +684,7 @@ const saveState = (sub: string, state: StoreState) => {
 };
 
 const canManage = (role: string): boolean =>
-  role === 'owner' || role === 'admin' || role === 'moderator';
+  role === 'owner' || role === 'admin';
 
 const Stars: React.FC<{ rating: number }> = ({ rating }) => {
   const full = Math.floor(rating);
@@ -779,7 +779,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
 
   const install = (app: CatalogApp) => {
     if (!manageable) {
-      showToast('Read-only role — install requires moderator permission.');
+      showToast('Install changes require owner/admin access.');
       return;
     }
     if (app.preinstalled) {
@@ -791,7 +791,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
     );
     showToast(
       app.origin === 'devvit-store'
-        ? `Marked ${app.name} as installed. Complete install on Reddit Developer Platform.`
+        ? `Marked ${app.name} as installed. Managed on Reddit Developer Platform.`
         : `${app.name} installed for r/${subreddit}.`
     );
     if (app.origin === 'devvit-store' && app.devvitUrl) navigateTo(app.devvitUrl);
@@ -799,7 +799,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
 
   const uninstall = (app: CatalogApp) => {
     if (!manageable) {
-      showToast('Read-only role — uninstall requires moderator permission.');
+      showToast('Uninstall changes require owner/admin access.');
       return;
     }
     if (app.preinstalled) {
@@ -917,7 +917,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
                 className="glass-btn"
                 onClick={() => uninstall(selected)}
                 disabled={!manageable || selected.preinstalled}
-                title={selected.preinstalled ? 'Built-in module' : !manageable ? 'Moderator role required' : ''}
+                title={selected.preinstalled ? 'Built-in module' : !manageable ? 'Owner/admin role required' : ''}
               >
                 {selected.preinstalled ? 'Built-in' : 'Uninstall'}
               </button>
@@ -927,7 +927,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
                 className="glass-btn"
                 onClick={() => install(selected)}
                 disabled={!manageable}
-                title={!manageable ? 'Moderator role required' : ''}
+                title={!manageable ? 'Owner/admin role required' : ''}
               >
                 Install
               </button>
@@ -965,7 +965,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
               {!manageable && (
                 <>
                   <br />
-                  <em>Install / uninstall is disabled for this role.</em>
+                  <em>Install / uninstall is owner/admin only.</em>
                 </>
               )}
             </p>
@@ -975,7 +975,7 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
         {previewUrl && selected.origin !== 'internal' && (
           <section className="store-detail-preview">
             <div className="store-preview-bar">
-              <span className="module-eyebrow">Live preview</span>
+              <span className="module-eyebrow">Official link</span>
               <code>{previewUrl}</code>
               <button
                 type="button"
@@ -998,16 +998,9 @@ export const DeveloperAppsPanel: React.FC<DeveloperAppsPanelProps> = ({ session,
                 Open ↗
               </button>
             </div>
-            <div className="store-preview-frame">
-              <iframe
-                key={previewUrl}
-                src={previewUrl}
-                title={`${selected.name} preview`}
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                referrerPolicy="no-referrer"
-              />
+            <div className="store-preview-frame store-preview-frame--launcher">
               <div className="store-preview-fallback">
-                <strong>Reddit blocks embedding</strong>
+                <strong>Open on Reddit</strong>
                 <p>
                   reddit.com and developers.reddit.com send <code>X-Frame-Options: DENY</code>, so this preview is
                   almost always blank. Use <em>Open ↗</em> or <em>Copy URL</em> to view the live page.

@@ -78,8 +78,6 @@ const DEFAULT_COMMENTCOP_SETTINGS: CommentCopSettings = {
   action: 'log_only',
   minTokenCount: 8,
   rollingWindowSize: 250,
-  supabaseVerificationEnabled: false,
-  supabaseUrlConfigured: Boolean(process.env.SUPABASE_COMMENTCOP_URL),
 };
 const currentSubredditName = () => context.subredditName ?? 'testsubreddit';
 const keyFor = (subredditName: string, mode: 'live' | 'demo' | 'shared', name: string) =>
@@ -215,8 +213,8 @@ api.onError((error, c) => {
   if (error instanceof AuthError) {
     return c.json<ApiError>({ status: 'error', code: error.code, message: error.message }, error.statusCode);
   }
-  console.error('Unhandled ModDesk API error', error);
-  return c.json<ApiError>({ status: 'error', code: 'REDDIT_API_UNAVAILABLE', message: 'ModDesk API request failed.' }, 500);
+  console.error('Unhandled MODPC API error', error);
+  return c.json<ApiError>({ status: 'error', code: 'REDDIT_API_UNAVAILABLE', message: 'MODPC API request failed.' }, 500);
 });
 
 const json = {
@@ -916,10 +914,10 @@ async function getSession(): Promise<SessionResponse> {
 async function requireModerator(): Promise<ModContextState & { username: string }> {
   const modContext = await getModContext();
   if (!modContext.username) {
-    throw new AuthError('NOT_LOGGED_IN', 'Open ModDesk from a logged-in Reddit account.', 401);
+    throw new AuthError('NOT_LOGGED_IN', 'Open MODPC from a logged-in Reddit account.', 401);
   }
   if (!modContext.isModerator) {
-    throw new AuthError('NOT_MODERATOR', 'Moderator access required for ModDesk OS.', 403);
+    throw new AuthError('NOT_MODERATOR', 'Moderator access required for MODPC.', 403);
   }
   return { ...modContext, username: modContext.username };
 }
@@ -927,7 +925,7 @@ async function requireModerator(): Promise<ModContextState & { username: string 
 async function requireRole(capability: 'read' | 'live_write' | 'manage_roles' | 'settings'): Promise<ModContextState & { username: string }> {
   const modContext = await requireModerator();
   if (!roleCan(modContext.modDeskRole, capability)) {
-    throw new AuthError('NOT_APPROVED', 'Your ModDesk role does not allow this action.', 403);
+    throw new AuthError('NOT_APPROVED', 'Your MODPC role does not allow this action.', 403);
   }
   return modContext;
 }
@@ -960,7 +958,7 @@ async function requireLiveWrite(
     throw new AuthError('MISSING_PERMISSION', 'Live Reddit Mode writes are locked until an owner/admin enables them.', 403);
   }
   if (!roleCan(modContext.modDeskRole, 'live_write')) {
-    throw new AuthError('NOT_APPROVED', 'Your ModDesk role cannot perform live Reddit writes.', 403);
+    throw new AuthError('NOT_APPROVED', 'Your MODPC role cannot perform live Reddit writes.', 403);
   }
   if (!hasRedditPermission(modContext, permission)) {
     throw new AuthError('MISSING_PERMISSION', `Reddit moderator permission "${permission}" is required.`, 403);
@@ -1076,9 +1074,17 @@ async function readRagIndex(subredditName: string): Promise<{ rebuiltAt: string;
   return await json.get<{ rebuiltAt: string; count: number; docs: RagDocument[] }>(keyFor(subredditName, 'shared', 'sentinel:rag:index'));
 }
 
-async function getSentinelApiKey(subredditName: string): Promise<string | undefined> {
+function getProviderApiKey(provider: 'openai' | 'gemini' | 'groq'): string | undefined {
+  if (provider === 'openai') return process.env.OPENAI_API_KEY;
+  if (provider === 'gemini') return process.env.GEMINI_API_KEY;
+  return process.env.GROQ_API_KEY;
+}
+
+async function getConfiguredSentinelApiKey(subredditName: string, model: string): Promise<string | undefined> {
   const stored = await redis.get(keyFor(subredditName, 'shared', 'sentinel:groq:key'));
-  return stored || process.env.GROQ_API_KEY || undefined;
+  if (stored) return stored;
+  const { provider } = getApiUrlAndProvider(model);
+  return getProviderApiKey(provider) ?? process.env.GROQ_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.OPENAI_API_KEY;
 }
 
 async function getSentinelMeta(subredditName: string): Promise<{ lastSuccessAt: string | null; lastLatencyMs: number | null; lastError: string | null }> {
@@ -1352,17 +1358,17 @@ function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], mod
     .map((message) => `${message.role.toUpperCase()}: ${sanitizeForAi(message.content)}`)
     .join('\n');
   return [
-    'You are Sentinel, the ModDesk OS AI assistant for Reddit moderators.',
+    'You are Sentinel, the MODPC AI assistant for Reddit moderators.',
     'Behave like a high-quality Groq-powered assistant built specifically for Reddit moderator teams. Be conversational, useful, and concrete.',
-    'Use supplied ModDesk workspace context when it helps, but do not sound like a retrieval system. If context is missing, say what you need or answer generally.',
+    'Use supplied MODPC workspace context when it helps, but do not sound like a retrieval system. If context is missing, say what you need or answer generally.',
     'If the user says hi, introduce yourself as a Reddit moderation operations assistant, not a generic chatbot.',
     'Never claim you performed a Reddit action. For bans, removals, locks, mutes, automod edits, or public replies, recommend the next step and name the evidence needed.',
     'When suggesting policy or Automod changes, include a short rationale, risk level, permission requirement, and review checklist.',
     'Always include these sections: Answer, Reasoning summary, Recommended action, Risk level, Related rule/policy, Confidence, Source references, Mode boundary, Next safe step.',
     'You may propose task drafts only. Never execute destructive live Reddit actions from chat.',
-    `Current community: r/${modContext.subredditName}. ModDesk role: ${modContext.modDeskRole}. Usernames and links may be sanitized before leaving Reddit.`,
+    `Current community: r/${modContext.subredditName}. MODPC role: ${modContext.modDeskRole}. Usernames and links may be sanitized before leaving Reddit.`,
     '',
-    'MODDESK WORKSPACE CONTEXT:',
+    'MODPC WORKSPACE CONTEXT:',
     contextBlock || 'No matching context found. Ask for the missing detail and avoid guessing.',
     '',
     'RECENT CHAT:',
@@ -1370,7 +1376,7 @@ function composeAiPrompt(request: AiChatRequest, sources: AiContextSource[], mod
     '',
     `MODERATOR QUESTION: ${sanitizeForAi(request.prompt)}`,
     '',
-    'Answer like a polished AI assistant with concise sections. Include a Sources line naming relevant ModDesk context titles, or say "Sources: general moderation guidance" when no context was used.',
+    'Answer like a polished AI assistant with concise sections. Include a Sources line naming relevant MODPC context titles, or say "Sources: general moderation guidance" when no context was used.',
   ].join('\n');
 }
 
@@ -1479,8 +1485,8 @@ export async function answerSentinelRequest(
   const { url, provider } = getApiUrlAndProvider(activeModel);
   const capitalizedProvider = provider.charAt(0).toUpperCase() + provider.slice(1);
 
-  const groqKey = await getSentinelApiKey(modContext.subredditName);
-  if (groqKey) {
+  const apiKey = await getConfiguredSentinelApiKey(modContext.subredditName, activeModel);
+  if (apiKey) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
     try {
@@ -1489,7 +1495,7 @@ export async function answerSentinelRequest(
         signal: controller.signal,
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${groqKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1542,8 +1548,8 @@ export async function answerSentinelRequest(
           status: 'success',
           sources,
           promptPreview,
-          reasoningSummary: sources.length > 0 ? `${capitalizedProvider} answered with ModDesk workspace context.` : `${capitalizedProvider} answered without retrieved workspace context.`,
-          recommendedAction: 'Review the suggested action and use the appropriate ModDesk module to continue.',
+          reasoningSummary: sources.length > 0 ? `${capitalizedProvider} answered with MODPC workspace context.` : `${capitalizedProvider} answered without retrieved workspace context.`,
+          recommendedAction: 'Review the suggested action and use the appropriate MODPC module to continue.',
           riskLevel: inferRisk(request.prompt),
           relatedPolicy: sources[0]?.title ?? 'Retrieved moderation context',
           confidence: sources.length > 0 ? 'high' : 'medium',
@@ -1968,7 +1974,6 @@ async function getCommentCopSettings(subredditName: string): Promise<CommentCopS
   const settings: CommentCopSettings = {
     ...DEFAULT_COMMENTCOP_SETTINGS,
     ...existing,
-    supabaseUrlConfigured: Boolean(process.env.SUPABASE_COMMENTCOP_URL),
   };
   if (!existing || JSON.stringify(existing) !== JSON.stringify(settings)) {
     await json.set(keyFor(subredditName, 'live', 'commentcop:settings'), settings);
@@ -2069,7 +2074,7 @@ function scoreAttempt(
 api.get('/health', async (c) => {
   const modContext = await getModContext();
   await redis.set(key('health:last'), now());
-  return c.json({ status: 'ok', app: 'ModDesk OS', context: modContext }, 200);
+  return c.json({ status: 'ok', app: 'MODPC', context: modContext }, 200);
 });
 
 api.get('/session', async (c) => {
@@ -2156,19 +2161,21 @@ api.post('/ai/chat', async (c) => {
 api.get('/ai/status', async (c) => {
   const modContext = await requireModerator();
   const settings = await getSettings(modContext.subredditName);
-  const hasKey = Boolean(await getSentinelApiKey(modContext.subredditName));
+  const activeModel = settings.sentinelModel || GROQ_MODEL;
+  const { provider } = getApiUrlAndProvider(activeModel);
+  const hasKey = Boolean(await getConfiguredSentinelApiKey(modContext.subredditName, activeModel));
   const meta = await getSentinelMeta(modContext.subredditName);
   return c.json({
     status: hasKey ? 'connected' : 'disabled',
-    provider: hasKey ? 'groq' : 'none',
-    model: settings.sentinelModel,
+    provider: hasKey ? provider : 'none',
+    model: activeModel,
     ragEnabled: settings.sentinelRagEnabled,
     lastSuccessAt: meta.lastSuccessAt,
     lastLatencyMs: meta.lastLatencyMs,
     lastError: meta.lastError,
     detail: hasKey
-      ? 'Groq key is configured server-side. Use Test Groq Connection to verify the selected model.'
-      : 'Sentinel AI is not configured. Owner/admin must add a Groq API key in Settings.',
+      ? `Sentinel AI is configured for ${provider}. Use Test AI Connection to verify the selected model.`
+      : 'Sentinel AI is not configured. Owner/admin must add an API key in Settings.',
   });
 });
 
@@ -2176,11 +2183,11 @@ api.get('/ai/settings', async (c) => {
   const modContext = await requireRole('settings');
   const settings = await getSettings(modContext.subredditName);
   const meta = await getSentinelMeta(modContext.subredditName);
-  const storedKey = await redis.get(keyFor(modContext.subredditName, 'shared', 'sentinel:groq:key'));
+  const activeModel = settings.sentinelModel || GROQ_MODEL;
   return c.json({
-    hasApiKey: Boolean(storedKey || process.env.GROQ_API_KEY),
-    model: settings.sentinelModel,
-    envModel: process.env.GROQ_MODEL ?? null,
+    hasApiKey: Boolean(await getConfiguredSentinelApiKey(modContext.subredditName, activeModel)),
+    model: activeModel,
+    envModel: process.env.GROQ_MODEL ?? process.env.GEMINI_MODEL ?? process.env.OPENAI_MODEL ?? null,
     temperature: settings.sentinelTemperature,
     maxTokens: settings.sentinelMaxTokens,
     ragEnabled: settings.sentinelRagEnabled,
@@ -2222,10 +2229,11 @@ api.post('/ai/settings', async (c) => {
   });
   return c.json(await (async () => {
     const meta = await getSentinelMeta(modContext.subredditName);
+    const activeModel = after.sentinelModel || GROQ_MODEL;
     return {
-      hasApiKey: Boolean(await getSentinelApiKey(modContext.subredditName)),
-      model: after.sentinelModel,
-      envModel: process.env.GROQ_MODEL ?? null,
+      hasApiKey: Boolean(await getConfiguredSentinelApiKey(modContext.subredditName, activeModel)),
+      model: activeModel,
+      envModel: process.env.GROQ_MODEL ?? process.env.GEMINI_MODEL ?? process.env.OPENAI_MODEL ?? null,
       temperature: after.sentinelTemperature,
       maxTokens: after.sentinelMaxTokens,
       ragEnabled: after.sentinelRagEnabled,
@@ -2241,11 +2249,11 @@ api.post('/ai/settings', async (c) => {
 api.post('/ai/test', async (c) => {
   const modContext = await requireRole('settings');
   const settings = await getSettings(modContext.subredditName);
-  const apiKey = await getSentinelApiKey(modContext.subredditName);
   const startedAt = Date.now();
   const activeModel = settings.sentinelModel || GROQ_MODEL;
   const { url, provider } = getApiUrlAndProvider(activeModel);
   const capitalizedProvider = provider.charAt(0).toUpperCase() + provider.slice(1);
+  const apiKey = await getConfiguredSentinelApiKey(modContext.subredditName, activeModel);
 
   if (!apiKey) {
     return c.json<TestGroqResponse>({
@@ -2266,7 +2274,7 @@ api.post('/ai/test', async (c) => {
       },
       body: JSON.stringify({
         model: activeModel,
-        messages: [{ role: 'user', content: `Reply with exactly: ModDesk Sentinel ${capitalizedProvider} test ok.` }],
+        messages: [{ role: 'user', content: `Reply with exactly: MODPC Sentinel ${capitalizedProvider} test ok.` }],
         temperature: 0,
         max_tokens: 32,
       }),
@@ -2855,14 +2863,14 @@ api.post('/live/automod', async (c) => {
     subredditName: modContext.subredditName,
     page: 'config/automod',
     content,
-    reason: reason || 'ModDesk OS live Automod commit',
+    reason: reason || 'MODPC live Automod commit',
   });
   await audit(modContext.username, {
     mode: 'live',
     eventType: 'live.automod.updated',
     entityType: 'wiki',
     entityId: 'config/automod',
-    summary: `Updated live Automod YAML. Reason: ${reason || 'ModDesk OS live Automod commit'}`,
+    summary: `Updated live Automod YAML. Reason: ${reason || 'MODPC live Automod commit'}`,
     sourceModule: 'automod',
     redditResponse: 'reddit.updateWikiPage completed',
   });
@@ -3938,10 +3946,6 @@ api.post('/live/commentcop/settings', async (c) => {
     ...(input.action === 'remove' || input.action === 'log_only' ? { action: input.action } : {}),
     ...(typeof input.minTokenCount === 'number' ? { minTokenCount: Math.min(40, Math.max(4, Math.round(input.minTokenCount))) } : {}),
     ...(typeof input.rollingWindowSize === 'number' ? { rollingWindowSize: Math.min(1000, Math.max(50, Math.round(input.rollingWindowSize))) } : {}),
-    ...(typeof input.supabaseVerificationEnabled === 'boolean'
-      ? { supabaseVerificationEnabled: input.supabaseVerificationEnabled && Boolean(process.env.SUPABASE_COMMENTCOP_URL) }
-      : {}),
-    supabaseUrlConfigured: Boolean(process.env.SUPABASE_COMMENTCOP_URL),
   };
   await json.set(keyFor(modContext.subredditName, 'live', 'commentcop:settings'), next);
   await audit(modContext.username, {
@@ -4006,7 +4010,7 @@ const DEFAULT_OWNER_CONFIG = (): OwnerWorkspaceConfigType => ({
   requireConfirmationOnLive: true,
   allowTraineeAccess: true,
   defaultThemeMode: 'modern',
-  welcomeMessage: 'Welcome to ModDesk. Pick your queue from the dock and keep good notes.',
+  welcomeMessage: 'Welcome to MODPC. Pick your queue from the dock and keep good notes.',
   updatedAt: new Date().toISOString(),
   updatedBy: null,
 });
@@ -4104,21 +4108,43 @@ const parseMentions = (body: string): string[] => {
   return [...out];
 };
 
+const readTeamMessages = async (subredditName: string): Promise<ChatMessageType[]> => {
+  const raw = await redis.get(teamKey(subredditName, 'messages'));
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as ChatMessageType[];
+  } catch {
+    return [];
+  }
+};
+
+const writeTeamMessages = async (subredditName: string, messages: ChatMessageType[]) => {
+  await redis.set(teamKey(subredditName, 'messages'), JSON.stringify(messages.slice(-MAX_CHAT_MESSAGES)));
+};
+
 api.get('/team/chat', async (c) => {
   const mc = await requireModerator();
   const sinceParam = c.req.query('since');
   const since = sinceParam ? new Date(sinceParam).getTime() : 0;
-  const raw = await redis.get(teamKey(mc.subredditName, 'messages'));
-  let messages: ChatMessageType[] = [];
-  if (raw) {
-    try { messages = JSON.parse(raw) as ChatMessageType[]; }
-    catch { messages = []; }
+  let messages = await readTeamMessages(mc.subredditName);
+  if (messages.length === 0) {
+    messages = [{
+      id: id('msg'),
+      author: 'ModDesk',
+      authorRole: 'owner',
+      body: `Team chat is ready for r/${mc.subredditName}. Only subreddit moderators can read or post here.`,
+      mentions: [],
+      pinned: true,
+      createdAt: now(),
+    }];
+    await writeTeamMessages(mc.subredditName, messages);
   }
-  if (since > 0) messages = messages.filter((m) => new Date(m.createdAt).getTime() > since);
-  messages = messages.slice(-100);
-  const pinned = messages.filter((m) => m.pinned);
-  const participants = [...new Set(messages.map((m) => m.author))];
-  return c.json({ messages, pinned, participants });
+  const pinned = messages.filter((m) => m.pinned).slice(-10);
+  const visibleMessages = since > 0
+    ? messages.filter((m) => new Date(m.createdAt).getTime() > since)
+    : messages.slice(-100);
+  const participants = [...new Set(messages.filter((m) => m.author !== 'ModDesk').map((m) => m.author))];
+  return c.json({ messages: visibleMessages, pinned, participants });
 });
 
 api.post('/team/chat', async (c) => {
@@ -4131,12 +4157,7 @@ api.post('/team/chat', async (c) => {
   if (text.length > 2000) {
     return c.json({ status: 'error', message: 'Message exceeds 2000 chars.' } satisfies ApiError, 400);
   }
-  const raw = await redis.get(teamKey(mc.subredditName, 'messages'));
-  let messages: ChatMessageType[] = [];
-  if (raw) {
-    try { messages = JSON.parse(raw) as ChatMessageType[]; }
-    catch { messages = []; }
-  }
+  const messages = await readTeamMessages(mc.subredditName);
   const message: ChatMessageType = {
     id: id('msg'),
     author: mc.username,
@@ -4147,8 +4168,7 @@ api.post('/team/chat', async (c) => {
     createdAt: now(),
   };
   messages.push(message);
-  if (messages.length > MAX_CHAT_MESSAGES) messages = messages.slice(-MAX_CHAT_MESSAGES);
-  await redis.set(teamKey(mc.subredditName, 'messages'), JSON.stringify(messages));
+  await writeTeamMessages(mc.subredditName, messages);
   return c.json({ message });
 });
 
@@ -4158,30 +4178,24 @@ api.post('/team/chat/pin', async (c) => {
   if (!body.messageId) {
     return c.json({ status: 'error', message: 'messageId required.' } satisfies ApiError, 400);
   }
-  const raw = await redis.get(teamKey(mc.subredditName, 'messages'));
-  if (!raw) {
+  const messages = await readTeamMessages(mc.subredditName);
+  if (messages.length === 0) {
     return c.json({ status: 'error', message: 'No chat history.' } satisfies ApiError, 404);
   }
-  let messages: ChatMessageType[];
-  try { messages = JSON.parse(raw) as ChatMessageType[]; }
-  catch { messages = []; }
   const target = messages.find((m) => m.id === body.messageId);
   if (!target) {
     return c.json({ status: 'error', message: 'Message not found.' } satisfies ApiError, 404);
   }
   target.pinned = body.pinned ?? !target.pinned;
-  await redis.set(teamKey(mc.subredditName, 'messages'), JSON.stringify(messages));
+  await writeTeamMessages(mc.subredditName, messages);
   return c.json({ message: target });
 });
 
 api.delete('/team/chat/:messageId', async (c) => {
   const mc = await requireModerator();
   const messageId = c.req.param('messageId');
-  const raw = await redis.get(teamKey(mc.subredditName, 'messages'));
-  if (!raw) return c.json({ status: 'error', message: 'No chat history.' } satisfies ApiError, 404);
-  let messages: ChatMessageType[];
-  try { messages = JSON.parse(raw) as ChatMessageType[]; }
-  catch { messages = []; }
+  let messages = await readTeamMessages(mc.subredditName);
+  if (messages.length === 0) return c.json({ status: 'error', message: 'No chat history.' } satisfies ApiError, 404);
   const target = messages.find((m) => m.id === messageId);
   if (!target) return c.json({ status: 'error', message: 'Not found.' } satisfies ApiError, 404);
   const canDelete = target.author.toLowerCase() === mc.username.toLowerCase() ||
@@ -4190,13 +4204,13 @@ api.delete('/team/chat/:messageId', async (c) => {
     return c.json({ status: 'error', message: 'Only author, owner, or admin can delete.' } satisfies ApiError, 403);
   }
   messages = messages.filter((m) => m.id !== messageId);
-  await redis.set(teamKey(mc.subredditName, 'messages'), JSON.stringify(messages));
+  await writeTeamMessages(mc.subredditName, messages);
   return c.json({ ok: true });
 });
 
 // ── Owner admin + first-run (Phase 3) ─────────────────────────────────
 api.get('/owner/team', async (c) => {
-  const mc = await requireModerator();
+  const mc = await requireOwner();
   let mods: Array<{ username: string; modPermissions?: Map<string, unknown> }>;
   try {
     const rawMods = await reddit.getModerators({ subredditName: mc.subredditName, limit: 100 }).all();

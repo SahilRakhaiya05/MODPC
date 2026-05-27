@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AppSettings, AuditEvent, ModeratorProfile, QueueItem, SystemStatus } from '../types';
 import type { SessionResponse } from '../../shared/api';
 import { api } from '../utils/api';
@@ -374,7 +374,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
       { id: 'queue', label: 'Needs Review', hint: 'Reports, severity, rules, guarded actions' },
       { id: 'modmail', label: 'Modmail', hint: 'Replies, internal notes, archive workflow' },
       { id: 'typewriter', label: 'Saved Responses', hint: 'Reusable moderator replies' },
-      { id: 'modlog', label: 'Mod Log', hint: 'Reddit native log plus ModDesk audit' },
+      { id: 'modlog', label: 'Mod Log', hint: 'Reddit native log plus MODPC audit' },
       { id: 'automod', label: 'Automod', hint: 'Automod wiki sandbox and live publishing gates' },
       { id: 'commentcop', label: 'CommentCop', hint: 'Anti-bot copied-comment shield' },
       { id: 'consensus', label: 'Consensus', hint: 'Evidence-backed high-impact decisions' },
@@ -400,7 +400,7 @@ const navMenus: Array<{ label: string; items: Array<{ id: WindowId | 'audits'; l
     items: [
       { id: 'automod', label: 'Automod Studio', hint: 'Draft, validate, diff, publish safely' },
       { id: 'composer', label: 'Snippet Generator', hint: 'Draft Automod snippets with Sentinel context' },
-      { id: 'audits', label: 'History', hint: 'Automod and ModDesk audit events' },
+      { id: 'audits', label: 'History', hint: 'Automod and MODPC audit events' },
     ],
   },
   {
@@ -502,6 +502,8 @@ const fallbackStats = (auditCount: number): HomeStats => ({
   loadedAt: new Date().toISOString(),
 });
 
+const ownerOnlyWindows = new Set<WindowId>(['owneradmin']);
+
 export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session, triggerToast, onReset }) => {
   const [settings, setSettings] = useState<AppSettings>(statusData.settings);
   const [profile, setProfile] = useState<ModeratorProfile>(statusData.moderatorProfile);
@@ -522,7 +524,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const [draggedIcon, setDraggedIcon] = useState<ModuleId | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [liveRules, setLiveRules] = useState<Array<{ shortName: string; description?: string; priority?: number }>>([]);
-  const [liveModlog, setLiveModlog] = useState<Array<{ id: string; type: string; moderatorName?: string; details?: string; description?: string; createdAt: string; target?: { author?: string; title?: string } }>>([]);
   const [liveEvents, setLiveEvents] = useState<Array<{ id: string; kind: string; createdAt: string; actor?: string | null; summary: string }>>([]);
   const liveWritesLocked = !settings.liveWritesEnabled;
 
@@ -655,13 +656,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   useEffect(() => {
     const fetchWorkbench = async () => {
       try {
-        const [rulesResult, modlogResult, eventsResult] = await Promise.allSettled([
+        const [rulesResult, eventsResult] = await Promise.allSettled([
           api.getLiveRules(),
-          api.getLiveModlog(),
           api.getLiveEvents(),
         ]);
         if (rulesResult.status === 'fulfilled') setLiveRules(rulesResult.value.rules ?? []);
-        if (modlogResult.status === 'fulfilled') setLiveModlog((modlogResult.value.logs ?? []).slice(0, 6));
         if (eventsResult.status === 'fulfilled') setLiveEvents((eventsResult.value.events ?? []).slice(0, 8));
       } catch (err) {
         console.error(err);
@@ -680,12 +679,50 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
   const cleanSubredditName = settings.subredditName.replace(/^r\//i, '').replace(/\s+\(Standalone\)$/i, '');
   const cleanUsername = profile.username.replace(/^u\//i, '');
   const subredditLabel = `r/${cleanSubredditName}`;
-  const filteredCommands = commandItems.filter((item) => {
+  const canManageApp = session?.modDeskRole === 'owner' || session?.modDeskRole === 'admin';
+  const canOpenTarget = useCallback(
+    (target: WindowId | 'audits') => target === 'audits' || !ownerOnlyWindows.has(target) || canManageApp,
+    [canManageApp]
+  );
+  const visibleModules = useMemo(
+    () => modules.filter((item) => canOpenTarget(item.id)),
+    [canOpenTarget]
+  );
+  const visibleMainTabs = useMemo(
+    () => mainTabs.filter((item) => canOpenTarget(item.id)),
+    [canOpenTarget]
+  );
+  const visibleWindowIds = useMemo(
+    () => windowIds.filter((item) => canOpenTarget(item)),
+    [canOpenTarget]
+  );
+  const visibleNavMenus = useMemo(
+    () => navMenus.map((menu) => ({
+      ...menu,
+      items: menu.items.filter((item) => canOpenTarget(item.id)),
+    })),
+    [canOpenTarget]
+  );
+  const visibleCommandItems = useMemo(
+    () => commandItems.filter((item) => canOpenTarget(item.target)),
+    [canOpenTarget]
+  );
+  const filteredCommands = visibleCommandItems.filter((item) => {
     const needle = commandQuery.trim().toLowerCase();
     return !needle || `${item.label} ${item.hint}`.toLowerCase().includes(needle);
   });
 
+  const formatModeratorLabel = (entry: { actor?: string | null; moderatorName?: string | null }) => {
+    const rawName = (entry.actor ?? entry.moderatorName ?? '').trim().replace(/^u\//i, '');
+    if (!rawName || /^unknown[_ ]mod$/i.test(rawName)) return 'Moderator unavailable';
+    return rawName === 'AutoModerator' ? rawName : `u/${rawName}`;
+  };
+
   const openWindow = (target: WindowId) => {
+    if (!canOpenTarget(target)) {
+      triggerToast('Owner Admin is only visible to the community owner or app admin.', 'warning');
+      return;
+    }
     setWindows((prev) => ({ ...prev, [target]: { ...prev[target], isOpen: true, isMinimized: false } }));
     setActiveWindow(target);
     setOpenNavMenu(null);
@@ -789,6 +826,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           triggerToast={triggerToast}
           openTeamChat={() => openWindow('teamchat')}
           openOwnerAdmin={() => openWindow('owneradmin')}
+          canOpenOwnerAdmin={canManageApp}
         />
       );
     }
@@ -802,19 +840,19 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           <button
             className="ph-mini-logo"
             onClick={() => openWindow('home')}
-            title="ModDesk home (Ctrl+H)"
-            aria-label="Open ModDesk home"
+            title="MODPC home (Ctrl+H)"
+            aria-label="Open MODPC home"
           >
             <span />
             <span />
             <span />
           </button>
           <div className="ph-product-title">
-            <strong>ModDesk OS</strong>
+            <strong>MODPC</strong>
             <span>Live Reddit console</span>
           </div>
           <nav className="ph-top-launcher" aria-label="Quick launch">
-            {navMenus.map((menu) => (
+            {visibleNavMenus.map((menu) => (
               <div key={menu.label} className="ph-nav-menu">
                 <button
                   type="button"
@@ -911,7 +949,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       )}
 
       <section className="ph-desktop-icons left" aria-label="Desktop files">
-        {modules.map((item) => {
+        {visibleModules.map((item) => {
           const position = iconPositions[item.id];
           const iconStyle: DesktopIconStyle = {
             '--tile-tint': item.tint,
@@ -937,17 +975,17 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
       {windows.home.isOpen && !windows.home.isMinimized && (
       <section
         className={`ph-home-window moddesk-home${windows.home.isMaximized ? ' is-maximized' : ''}`}
-        aria-label="ModDesk home"
+        aria-label="MODPC home"
         onMouseDown={() => setActiveWindow('home')}
       >
         <div className="ph-home-titlebar">
-          <button className="ph-doc-button" onClick={() => openWindow('settings')} aria-label="ModDesk settings">MD</button>
-          <strong>moddesk-os.sys</strong>
+          <button className="ph-doc-button" onClick={() => openWindow('settings')} aria-label="MODPC settings">MD</button>
+          <strong>modpc.sys</strong>
           <div className="ph-window-actions glass-window-controls">
             <button
               type="button"
               className="window-ctrl-dot minimize"
-              aria-label="Minimize ModDesk home"
+              aria-label="Minimize MODPC home"
               title="Minimize"
               onClick={() => minimizeWindow('home')}
             >
@@ -958,7 +996,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <button
               type="button"
               className="window-ctrl-dot maximize"
-              aria-label={windows.home.isMaximized ? 'Restore ModDesk home' : 'Maximize ModDesk home'}
+              aria-label={windows.home.isMaximized ? 'Restore MODPC home' : 'Maximize MODPC home'}
               title={windows.home.isMaximized ? 'Restore' : 'Maximize'}
               onClick={() => maximizeWindow('home')}
             >
@@ -969,7 +1007,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <button
               type="button"
               className="window-ctrl-dot close"
-              aria-label="Close ModDesk home"
+              aria-label="Close MODPC home"
               title="Close (re-open with Ctrl+H)"
               onClick={() => closeWindow('home')}
             >
@@ -981,7 +1019,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
           </div>
         </div>
         <div className="ph-editor-toolbar">
-          {mainTabs.map((tab) => (
+          {visibleMainTabs.map((tab) => (
             <button key={tab.id} onClick={() => openWindow(tab.id)}>{tab.label}</button>
           ))}
           <button className="ph-top-cta" onClick={() => openWindow('sentinel')}>Sentinel AI</button>
@@ -991,7 +1029,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
             <div className="moddesk-status-head">
               <div>
                 <span className="ph-kicker">{subredditLabel} / live moderator workspace</span>
-                <h1>ModDesk OS</h1>
+                <h1>MODPC</h1>
                 <p>One document-window workspace for the queues, mail, policy, users, logs, and response work your mod team actually touches.</p>
               </div>
               <div className="moddesk-session-card">
@@ -1071,24 +1109,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                   <button onClick={() => openWindow('modlog')}>Open log ↗</button>
                 </div>
                 <div className="moddesk-modlog-mini">
-                  {liveModlog.length === 0 ? (
-                    <p className="moddesk-empty">No recent moderator actions in {subredditLabel}.</p>
-                  ) : (
-                    liveModlog.map((entry) => (
-                      <button key={entry.id} onClick={() => openWindow('modlog')}>
-                        <div>
-                          <strong>{entry.type}</strong>
-                          <em>{entry.moderatorName ? `u/${entry.moderatorName}` : 'unknown mod'}</em>
-                        </div>
-                        <span>
-                          {entry.description || entry.details || entry.target?.title || entry.target?.author || '—'}
-                        </span>
-                        <time dateTime={entry.createdAt}>
-                          {new Date(entry.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </time>
-                      </button>
-                    ))
-                  )}
                 </div>
               </section>
 
@@ -1131,12 +1151,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
                 </div>
 
                 <div className="ph-panel-title">
-                  <span>ModDesk audit</span>
+                  <span>MODPC audit</span>
                   <button onClick={() => setAuditsOpen(true)}>Full feed ↗</button>
                 </div>
                 <div className="moddesk-activity-mini">
                   {visibleAudits.length === 0 ? (
-                    <p className="moddesk-empty">No ModDesk audit entries yet.</p>
+                    <p className="moddesk-empty">No MODPC audit entries yet.</p>
                   ) : (
                     visibleAudits.map((audit) => (
                       <button key={audit.eventId} onClick={() => setAuditsOpen(true)}>
@@ -1155,7 +1175,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({ statusData, session,
 
       {/* The top-menubar logo (the three skewed bars) re-opens the home window when closed. */}
 
-      {windowIds.map((item) => {
+      {visibleWindowIds.map((item) => {
         const win = windows[item];
         return (
           <RetroWindow

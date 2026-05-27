@@ -8,15 +8,15 @@ export function Splash() {
   return (
     <main className="splash-shell">
       <section className="splash-card">
-        <div className="splash-title">ModDesk OS v2.0</div>
+        <div className="splash-title">MODPC v2.0</div>
         <p>Subreddit Operations Desk</p>
         <div className="splash-terminal">
           <span>user: {context.username ?? 'moderator'}</span>
-          <span>mode: private mod utility</span>
+          <span>mode: moderator utility</span>
           <span>status: ready for expanded workspace</span>
         </div>
         <button className="retro-button primary splash-launch" onClick={(event) => requestExpandedMode(event.nativeEvent, 'game')}>
-          Boot Operations Desk
+          Boot MODPC
         </button>
       </section>
     </main>

@@ -59,7 +59,7 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete, subredditNam
         <header>
           <div className="boot-screen-logo" aria-hidden="true">MD</div>
           <div>
-            <h1>ModDesk OS</h1>
+            <h1>MODPC</h1>
             <p>Reddit moderator workspace · r/{subredditName || 'mody_os_dev'}</p>
           </div>
         </header>
@@ -81,7 +81,7 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete, subredditNam
               // Fallback to local image if internet / raw git is not resolved
               e.currentTarget.src = "/snoo.png";
             }}
-            alt="ModDesk OS Reddit Moderator Snoo"
+            alt="MODPC Reddit Moderator Snoo"
             style={{
               maxHeight: '100%',
               maxWidth: '100%',

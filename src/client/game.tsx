@@ -179,7 +179,7 @@ export function App() {
         setSetupStatus({ completed: true, completedAt: new Date().toISOString(), completedBy: 'preview_mod' });
         return;
       }
-      setError(err instanceof Error ? err.message : 'Unable to load ModDesk OS.');
+      setError(err instanceof Error ? err.message : 'Unable to load MODPC.');
     }
   }, []);
 
@@ -207,7 +207,7 @@ export function App() {
   useEffect(() => {
     refresh()
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Unable to load ModDesk OS.');
+        setError(err instanceof Error ? err.message : 'Unable to load MODPC.');
       });
   }, [refresh]);
 
@@ -222,7 +222,7 @@ export function App() {
           <header>
             <div className="boot-screen-logo boot-screen-logo--error" aria-hidden="true">!</div>
             <div>
-              <h1>ModDesk OS is private</h1>
+              <h1>MODPC is moderator-only</h1>
               <p>{error}</p>
             </div>
           </header>
@@ -245,7 +245,7 @@ export function App() {
           <header>
             <div className="boot-screen-logo" aria-hidden="true">MD</div>
             <div>
-              <h1>Preparing ModDesk OS</h1>
+              <h1>Preparing MODPC</h1>
               <p>Loading Redis-backed moderator workspace…</p>
             </div>
           </header>

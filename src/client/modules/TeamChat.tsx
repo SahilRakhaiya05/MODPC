@@ -64,7 +64,6 @@ export const TeamChat: React.FC<TeamChatProps> = ({ session, triggerToast }) => 
       if (data.messages.length > 0) {
         lastTsRef.current = data.messages[data.messages.length - 1]!.createdAt;
       }
-      await api.markNotificationsRead().catch(() => null);
     } catch (err) {
       if (!silent) triggerToast(err instanceof Error ? err.message : 'Failed to load chat.', 'error');
     }
@@ -72,7 +71,9 @@ export const TeamChat: React.FC<TeamChatProps> = ({ session, triggerToast }) => 
 
   useEffect(() => {
     mountedRef.current = true;
-    const initialLoad = window.setTimeout(() => void refresh(), 0);
+    const initialLoad = window.setTimeout(() => {
+      void refresh().then(() => api.markNotificationsRead().catch(() => null));
+    }, 0);
     const t = window.setInterval(() => { void refresh(true); }, POLL_MS);
     return () => {
       mountedRef.current = false;
@@ -93,6 +94,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ session, triggerToast }) => 
       await api.postTeamChat(text);
       setDraft('');
       await refresh(true);
+      await api.markNotificationsRead().catch(() => null);
     } catch (err) {
       triggerToast(err instanceof Error ? err.message : 'Failed to send.', 'error');
     } finally {

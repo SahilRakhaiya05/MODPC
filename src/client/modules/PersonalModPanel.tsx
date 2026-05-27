@@ -7,6 +7,7 @@ type PersonalModPanelProps = {
   triggerToast: (msg: string, tone?: 'success' | 'warning' | 'error' | 'info') => void;
   openTeamChat: () => void;
   openOwnerAdmin: () => void;
+  canOpenOwnerAdmin: boolean;
 };
 
 const themeOptions: Array<{ value: ThemeMode; label: string }> = [
@@ -52,6 +53,7 @@ export const PersonalModPanel: React.FC<PersonalModPanelProps> = ({
   triggerToast,
   openTeamChat,
   openOwnerAdmin,
+  canOpenOwnerAdmin,
 }) => {
   const [prefs, setPrefs] = useState<ModPrefs | null>(null);
   const [chatUnread, setChatUnread] = useState(0);
@@ -257,7 +259,9 @@ export const PersonalModPanel: React.FC<PersonalModPanelProps> = ({
 
       <footer className="personal-footer">
         <span>Last saved {new Date(prefs.updatedAt).toLocaleString()}</span>
-        <button type="button" className="glass-btn" onClick={openOwnerAdmin}>Open Owner Admin</button>
+        {canOpenOwnerAdmin && (
+          <button type="button" className="glass-btn" onClick={openOwnerAdmin}>Open Owner Admin</button>
+        )}
       </footer>
     </div>
   );

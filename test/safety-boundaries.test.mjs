@@ -32,7 +32,7 @@ test('Sentinel does not silently use fallback when Groq is missing or failing', 
   assert.match(apiSource, /Sentinel AI is not configured/);
   assert.equal(apiSource.includes('fallbackAvailable'), false);
   assert.equal(apiSource.includes('offlineFallbackEnabled'), false);
-  assert.match(apiSource, /Sentinel AI could not reach Groq/);
+  assert.match(apiSource, /Sentinel AI could not reach \$\{capitalizedProvider\}/);
   assert.match(apiSource, /groqFailureCauseForStatus/);
 });
 

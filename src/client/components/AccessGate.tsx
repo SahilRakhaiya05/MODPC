@@ -19,10 +19,10 @@ export const AccessGate: React.FC<AccessGateProps> = ({ session, children }) => 
         <header className="access-rich-header">
           <div className="access-mark">MD</div>
           <div>
-            <span className="ph-kicker">ModDesk OS</span>
+            <span className="ph-kicker">MODPC</span>
             <h1>For moderators of r/{sub}</h1>
             <p className="access-tagline">
-              This is the private moderator workspace. Regular community members don't have access.
+              This is the moderator-only workspace. Regular community members don't have access.
             </p>
           </div>
         </header>
@@ -46,11 +46,11 @@ export const AccessGate: React.FC<AccessGateProps> = ({ session, children }) => 
           <h2>How to get in</h2>
           <ol>
             <li>
-              <strong>Be a moderator of r/{sub}.</strong> Reddit identity is the only login — ModDesk does not have its
+              <strong>Be a moderator of r/{sub}.</strong> Reddit identity is the only login — MODPC does not have its
               own account system. If you should be a moderator, ask the community owner to add you.
             </li>
             <li>
-              <strong>Open from the mod menu.</strong> ModDesk appears in the subreddit's moderator post menu after the
+              <strong>Open from the mod menu.</strong> MODPC appears in the subreddit's moderator post menu after the
               owner installs it.
             </li>
             <li>
@@ -92,12 +92,12 @@ export const AccessGate: React.FC<AccessGateProps> = ({ session, children }) => 
             className="glass-btn"
             onClick={() => navigateTo('https://developers.reddit.com/apps')}
           >
-            About ModDesk ↗
+            About MODPC ↗
           </button>
         </footer>
 
         <p className="access-rich-note">
-          ModDesk is a Devvit app. Each subreddit installs its own copy; your access is scoped to communities you
+          MODPC is a Devvit app. Each subreddit installs its own copy; your access is scoped to communities you
           actively moderate.
         </p>
       </section>

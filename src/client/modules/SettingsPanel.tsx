@@ -157,7 +157,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedIsCurrent) {
-      triggerToast(`Open ModDesk from r/${selectedCommunity} to load that community's live tools.`, 'warning');
+      triggerToast(`Open MODPC from r/${selectedCommunity} to load that community's live tools.`, 'warning');
       navigateTo(`https://www.reddit.com/r/${selectedCommunity}/about/modqueue`);
       return;
     }
@@ -192,7 +192,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       onReset();
       return;
     }
-    triggerToast(`Opening r/${selectedCommunity}. Launch ModDesk there to work that community.`, 'success');
+    triggerToast(`Opening r/${selectedCommunity}. Launch MODPC there to work that community.`, 'success');
     navigateTo(`https://www.reddit.com/r/${selectedCommunity}/about/modqueue`);
   };
 
@@ -307,7 +307,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <article>
               <strong>AI Status</strong>
               <span className={sentinelSettings?.hasApiKey ? 'available' : 'unavailable'}>{sentinelSettings?.hasApiKey ? 'AI ready' : 'Needs key'}</span>
-              <em>Sentinel supports Groq, OpenAI, and Gemini. OpenAI and Gemini are globally allowlisted by Reddit and work instantly!</em>
+              <em>Sentinel supports Groq, OpenAI, and Gemini. Choose the provider that matches your key and model.</em>
             </article>
           </div>
         </section>
@@ -317,7 +317,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="settings-groq-box">
             <strong>{sentinelSettings?.hasApiKey ? 'AI API key saved server-side' : 'Sentinel AI is not configured'}</strong>
             <p>
-              Sentinel supports multiple AI providers. 
+              Sentinel supports multiple AI providers. Enter the key for the provider selected below, then test the connection before relying on chat answers.
         
             </p>
           </div>
@@ -370,7 +370,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
           <label className="settings-live-write-toggle">
             <input type="checkbox" checked={ragEnabled} onChange={(event) => setRagEnabled(event.target.checked)} />
-            <span>Enable workspace context and source citations. Turn this off when you only want a direct AI answer without ModDesk retrieval.</span>
+            <span>Enable workspace context and source citations. Turn this off when you only want a direct AI answer without MODPC retrieval.</span>
           </label>
           <label className="settings-live-write-toggle">
             <input type="checkbox" checked={automationEnabled} onChange={(event) => setAutomationEnabled(event.target.checked)} />
@@ -404,7 +404,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <section className="settings-card">
           <span className="module-eyebrow">Live Reddit writes</span>
           <p className="settings-card-note">
-            ModDesk is configured to run as a live Reddit console. Moderation actions (such as approve, remove, ban, mute, save Automod, and modmail replies) are **live-enabled by default** for real-time moderator operations.
+            MODPC is configured to run as a live Reddit console. Moderation actions (such as approve, remove, ban, mute, save Automod, and modmail replies) are **live-enabled by default** for real-time moderator operations.
           </p>
           <div className="settings-live-writes-status-badge" style={{ marginTop: '12px', padding: '12px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <strong style={{ color: 'rgb(34, 197, 94)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -412,7 +412,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               Console Status: Active & Writing Live
             </strong>
             <span style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.7)' }}>
-              ModDesk is directly connected to the Reddit API. Actions will take effect immediately in r/{currentCommunity}.
+              MODPC is directly connected to the Reddit API. Actions will take effect immediately in r/{currentCommunity}.
             </span>
           </div>
         </section>
@@ -460,7 +460,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               }}
               className="glass-input"
             >
-              <option value="modern">Modern ModDesk (light)</option>
+              <option value="modern">Modern MODPC (light)</option>
               <option value="authentic">Retro document OS (light)</option>
               <option value="high-contrast">Dark mode</option>
             </select>
@@ -471,7 +471,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="settings-wallpaper-grid" role="radiogroup" aria-label="Desktop background">
               {(
                 [
-                  { id: 'wall1', label: 'ModDesk desk' },
+                  { id: 'wall1', label: 'MODPC desk' },
                   { id: 'office-party', label: 'Office party' },
                   { id: 'dotted', label: 'Dotted paper' },
                   { id: 'plain', label: 'Plain' },
@@ -523,11 +523,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button onClick={() => setShowConfirmModal(false)} aria-label="Close reset confirmation">x</button>
             </header>
             <div className="settings-modal-body">
-              <h4 id="settings-reset-title">Factory reset ModDesk data?</h4>
+              <h4 id="settings-reset-title">Factory reset MODPC data?</h4>
               <p>This reseeds the subreddit-scoped Redis workspace: profiles, consensus tickets, templates, audit records, and queued local records.</p>
               <div>
                 <span>Target process</span>
-                <strong>ModDesk_DB_Seeding.reset_to_factory_defaults()</strong>
+                <strong>MODPC_DB_Seeding.reset_to_factory_defaults()</strong>
               </div>
               <label>
                 <input

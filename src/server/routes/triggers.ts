@@ -42,8 +42,6 @@ type CommentCopSettings = {
   action: 'log_only' | 'remove';
   minTokenCount: number;
   rollingWindowSize: number;
-  supabaseVerificationEnabled: boolean;
-  supabaseUrlConfigured: boolean;
 };
 
 type StoredComment = {
@@ -65,7 +63,7 @@ type CommentCopCase = {
   matchedCommentId: string;
   matchedAuthor: string;
   action: 'log_only' | 'remove' | 'ignored' | 'duplicate_trigger';
-  source: 'redis' | 'supabase' | 'redis_and_supabase';
+  source: 'reddit_redis';
   excerpt: string;
   matchedExcerpt: string;
   reason: string;
@@ -98,8 +96,6 @@ const commentCopDefaultSettings = (): CommentCopSettings => ({
   action: 'log_only',
   minTokenCount: 8,
   rollingWindowSize: 250,
-  supabaseVerificationEnabled: false,
-  supabaseUrlConfigured: Boolean(process.env.SUPABASE_COMMENTCOP_URL),
 });
 
 const commentCopKey = (name: string) => `${subKey()}:live:${name}`;
@@ -133,7 +129,6 @@ const getCommentCopSettings = async (): Promise<CommentCopSettings> => {
     return {
       ...commentCopDefaultSettings(),
       ...JSON.parse(raw),
-      supabaseUrlConfigured: Boolean(process.env.SUPABASE_COMMENTCOP_URL),
     };
   } catch {
     return commentCopDefaultSettings();
@@ -194,38 +189,6 @@ const pushAuditEvent = async (event: {
   await redis.set(indexKey, JSON.stringify([eventId, ...ids].slice(0, 80)));
 };
 
-const querySupabaseSimilarity = async (
-  settings: CommentCopSettings,
-  text: string
-): Promise<{ score: number; commentId: string; author: string; excerpt: string } | undefined> => {
-  if (!settings.supabaseVerificationEnabled || !process.env.SUPABASE_COMMENTCOP_URL) return undefined;
-  const url = `${process.env.SUPABASE_COMMENTCOP_URL.replace(/\/$/, '')}/functions/v1/commentcop-match`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(process.env.SUPABASE_COMMENTCOP_KEY ? { Authorization: `Bearer ${process.env.SUPABASE_COMMENTCOP_KEY}` } : {}),
-    },
-    body: JSON.stringify({ text, threshold: settings.threshold }),
-  });
-  if (!response.ok) return undefined;
-  const body = await response.json();
-  if (
-    typeof body.score === 'number' &&
-    typeof body.commentId === 'string' &&
-    typeof body.author === 'string' &&
-    typeof body.excerpt === 'string'
-  ) {
-    return {
-      score: body.score,
-      commentId: body.commentId,
-      author: body.author,
-      excerpt: body.excerpt,
-    };
-  }
-  return undefined;
-};
-
 triggers.post('/on-app-install', async (c) => {
   try {
     const post = await createPost();
@@ -234,7 +197,7 @@ triggers.post('/on-app-install', async (c) => {
       id: makeEventId('install'),
       kind: 'app-install',
       createdAt: new Date().toISOString(),
-      summary: `ModDesk OS installed — post ${post.id}`,
+      summary: `MODPC installed — post ${post.id}`,
       payload: { trigger: input.type },
     });
     return c.json<TriggerResponse>(
@@ -328,7 +291,7 @@ triggers.post('/on-comment-create', async (c) => {
         matchedCommentId: commentId,
         matchedAuthor: author,
         action: 'duplicate_trigger',
-        source: 'redis',
+        source: 'reddit_redis',
         excerpt: text.slice(0, 220),
         matchedExcerpt: text.slice(0, 220),
         reason: 'Duplicate Devvit trigger delivery blocked by Redis hSetNX lock.',
@@ -367,8 +330,8 @@ triggers.post('/on-comment-create', async (c) => {
       }
     }
 
-    let source: CommentCopCase['source'] = 'redis';
-    let match = best && best.score >= settings.threshold
+    const source: CommentCopCase['source'] = 'reddit_redis';
+    const match = best && best.score >= settings.threshold
       ? {
           score: best.score,
           commentId: best.comment.commentId,
@@ -376,20 +339,6 @@ triggers.post('/on-comment-create', async (c) => {
           excerpt: best.comment.body,
         }
       : undefined;
-
-    if (!match) {
-      const supabaseMatch = await querySupabaseSimilarity(settings, text).catch((error: unknown) => {
-        console.warn('CommentCop Supabase verification failed', error);
-        return undefined;
-      });
-      if (supabaseMatch && supabaseMatch.score >= settings.threshold) {
-        match = supabaseMatch;
-        source = 'supabase';
-      }
-    } else if (settings.supabaseVerificationEnabled) {
-      const supabaseMatch = await querySupabaseSimilarity(settings, text).catch(() => undefined);
-      if (supabaseMatch && supabaseMatch.score >= settings.threshold) source = 'redis_and_supabase';
-    }
 
     await redis.set(commentCopKey(`commentcop:comment:${commentId}`), JSON.stringify(stored));
     await redis.set(indexKey, JSON.stringify([commentId, ...ids.filter((id) => id !== commentId)].slice(0, settings.rollingWindowSize)));

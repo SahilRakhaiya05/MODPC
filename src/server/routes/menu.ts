@@ -46,7 +46,7 @@ menu.post('/open', async (c) => {
     return c.json<UiResponse>(await openDesk('open', await c.req.json().catch(() => undefined)), 200);
   } catch (error) {
     console.error(`Error opening ModDesk: ${error}`);
-    return c.json<UiResponse>({ showToast: 'Failed to open ModDesk OS' }, 400);
+    return c.json<UiResponse>({ showToast: 'Failed to open MODPC' }, 400);
   }
 });
 

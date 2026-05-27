@@ -13,8 +13,6 @@ const fallback: CommentCopResponse = {
     action: 'log_only',
     minTokenCount: 8,
     rollingWindowSize: 250,
-    supabaseVerificationEnabled: false,
-    supabaseUrlConfigured: false,
   },
   cases: [],
   stats: {
@@ -65,17 +63,18 @@ export const CommentCopPanel: React.FC<CommentCopPanelProps> = ({ triggerToast }
     <section className="commentcop-panel">
       <header className="commentcop-hero">
         <div>
-          <span className="module-eyebrow">Anti-bot similarity shield</span>
+          <span className="module-eyebrow">Reddit-only anti-bot shield</span>
           <h3>CommentCop</h3>
           <p>
             Watches new comments from the Devvit <code>onCommentCreate</code> trigger, blocks duplicate trigger
-            deliveries with Redis <code>hSetNX</code>, and flags copied comments with explainable Jaccard similarity.
+            deliveries with Reddit Redis <code>hSetNX</code>, and flags copied comments with explainable Jaccard
+            similarity. Cases stay inside this subreddit app install.
           </p>
         </div>
         <div className="commentcop-card">
           <span>Status</span>
           <strong>{data.settings.enabled ? 'Active' : 'Paused'}</strong>
-          <p>{data.settings.action === 'remove' ? 'Confirmed duplicates are removed.' : 'Duplicates are logged for review.'}</p>
+          <p>{data.settings.action === 'remove' ? 'Confirmed duplicates are removed when live writes are enabled.' : 'Duplicates are logged for review.'}</p>
         </div>
       </header>
 
@@ -150,7 +149,7 @@ export const CommentCopPanel: React.FC<CommentCopPanelProps> = ({ triggerToast }
             />
           </label>
           <label>
-            Rolling Redis window
+            Rolling Reddit Redis window
             <input
               type="number"
               min="50"
@@ -160,50 +159,10 @@ export const CommentCopPanel: React.FC<CommentCopPanelProps> = ({ triggerToast }
               onChange={(event) => void update({ rollingWindowSize: Number(event.target.value) })}
             />
           </label>
-          <label>
-            Supabase vector verification
-            <select
-              value={data.settings.supabaseVerificationEnabled ? 'on' : 'off'}
-              disabled={saving || !data.settings.supabaseUrlConfigured}
-              onChange={(event) => void update({ supabaseVerificationEnabled: event.target.value === 'on' })}
-            >
-              <option value="off">Off</option>
-              <option value="on">On</option>
-            </select>
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', borderRadius: '8px', background: '#fffdf8', border: '2px solid var(--line)', marginTop: '8px', marginBottom: '8px', textAlign: 'left' }}>
-            <span style={{ fontSize: '10px', fontWeight: 900, color: 'var(--ink)', letterSpacing: '0.05em' }}>🔗 DATABASE SHIELD INTEGRATIONS</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
-              <div style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: '6px', background: '#eaf8ef' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgb(34, 197, 94)', display: 'inline-block', boxShadow: '0 0 6px rgb(34, 197, 94)' }}></span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <strong style={{ fontSize: '10px', color: 'var(--ink)' }}>Redis Cache</strong>
-                  <span style={{ fontSize: '8px', color: 'var(--muted)', fontWeight: 650 }}>ACTIVE similarity</span>
-                </div>
-              </div>
-              <div style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: '6px', background: data.settings.supabaseUrlConfigured ? '#ecf3ff' : '#f5f2ee' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: data.settings.supabaseUrlConfigured ? 'rgb(59, 130, 246)' : '#8a8178', display: 'inline-block', boxShadow: data.settings.supabaseUrlConfigured ? '0 0 6px rgb(59, 130, 246)' : 'none' }}></span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <strong style={{ fontSize: '10px', color: 'var(--ink)' }}>Supabase Vector</strong>
-                  <span style={{ fontSize: '8px', color: 'var(--muted)', fontWeight: 650 }}>{data.settings.supabaseUrlConfigured ? 'CONNECTED' : 'OPTIONAL (Offline)'}</span>
-                </div>
-              </div>
-            </div>
+          <div className="commentcop-reddit-only">
+            <strong>Reddit-only storage</strong>
+            <span>No external vector service and no client-side external fetch. Devvit Redis stores locks, comments, stats, and cases.</span>
           </div>
-          <details style={{ marginTop: '4px', cursor: 'pointer', textAlign: 'left', marginBottom: '8px' }}>
-            <summary style={{ fontSize: '11px', fontWeight: 850, color: 'var(--orange-dark)', outline: 'none', userSelect: 'none' }}>
-              ⚙️ Show Developer Configuration Help
-            </summary>
-            <div style={{ marginTop: '8px', padding: '10px', background: '#faf6eb', border: '1px dashed var(--line)', borderRadius: '6px', fontSize: '10px', color: 'var(--muted)', lineHeight: '1.4', cursor: 'default' }}>
-              Supabase is optional. To enable it:
-              <ol style={{ paddingLeft: '14px', margin: '4px 0 0' }}>
-                <li>Add your project host (e.g. <code>abc.supabase.co</code>) to <code>permissions.http.domains</code> in <code>devvit.json</code>.</li>
-                <li>Run <code>devvit playtest</code> or <code>devvit upload</code> so Reddit approves it.</li>
-                <li>Set <code>SUPABASE_COMMENTCOP_URL</code> and <code>SUPABASE_COMMENTCOP_KEY</code> on your server.</li>
-              </ol>
-              * Redis similarity matching works instantly out-of-the-box without Supabase!
-            </div>
-          </details>
           <button type="button" className="glass-btn" onClick={() => void load()} disabled={loading}>
             Refresh
           </button>
@@ -226,7 +185,7 @@ export const CommentCopPanel: React.FC<CommentCopPanelProps> = ({ triggerToast }
                 </header>
                 <p>{item.excerpt}</p>
                 <p>Matched u/{item.matchedAuthor}: {item.matchedExcerpt}</p>
-                <small>{item.source} / {item.action} / {new Date(item.createdAt).toLocaleString()}</small>
+                <small>Reddit Redis / {item.action} / {new Date(item.createdAt).toLocaleString()}</small>
               </article>
             ))
           )}
