@@ -8,7 +8,7 @@ export function Splash() {
   return (
     <main className="splash-shell">
       <section className="splash-card">
-        <div className="splash-title">MODPC v2.0</div>
+        <div className="splash-title">MODPC</div>
         <p>Subreddit Operations Desk</p>
         <div className="splash-terminal">
           <span>user: {context.username ?? 'moderator'}</span>
